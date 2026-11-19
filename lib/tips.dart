@@ -1,166 +1,181 @@
+import 'package:material_ui/material_ui.dart';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'feeling.dart';
+import 'scoot_ui.dart';
+import 'traffic_questions.dart';
 
-class TipsPage extends StatelessWidget {
-  final VoidCallback onBack;
-  final VoidCallback onNext;
-
-  const TipsPage({
+class RideCheckResult extends StatelessWidget {
+  const RideCheckResult({
     super.key,
-    required this.onBack,
-    required this.onNext,
+    required this.readinessAnswers,
+    required this.attemptQuestions,
+    required this.trafficAnswers,
+    required this.onRestart,
+    required this.onHome,
   });
 
-  static const Color green = Color(0xFF16A991);
-  static const Color darkText = Color(0xFF172B2B);
-  static const Color greyText = Color(0xFF657070);
+  final Iterable<int> readinessAnswers;
+  final List<TrafficQuestion> attemptQuestions;
+  final Iterable<int> trafficAnswers;
+  final VoidCallback onRestart;
+  final VoidCallback onHome;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final screenWidth = constraints.maxWidth;
-            final screenHeight = constraints.maxHeight;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final advice = [
+      for (final (index, answer) in readinessAnswers.indexed)
+        if (readinessQuestions[index].options[answer].advice
+            case final String recommendation)
+          recommendation,
+    ];
+    final mistakes = [
+      for (final (index, answer) in trafficAnswers.indexed)
+        if (answer != attemptQuestions[index].correctOption)
+          (question: attemptQuestions[index], answer: answer),
+    ];
+    final total = attemptQuestions.length;
+    final score = total - mistakes.length;
+    final passedTraffic = score >= trafficPassScore;
+    final passed = advice.isEmpty && passedTraffic;
+    final (title, message, icon) = switch ((advice.isNotEmpty, passedTraffic)) {
+      (true, _) => (
+        'Отложите поездку',
+        'В ваших ответах есть факторы риска. Следуйте рекомендациям ниже.',
+        Icons.warning_amber_rounded,
+      ),
+      (false, false) => (
+        'Повторите ПДД',
+        'Разберите ошибки и пройдите проверку ещё раз перед поездкой.',
+        Icons.menu_book_rounded,
+      ),
+      (false, true) => (
+        'Проверка пройдена',
+        'По вашим ответам факторов риска не выявлено. '
+            'Соблюдайте ПДД и учитывайте своё самочувствие перед поездкой.',
+        Icons.emoji_events_rounded,
+      ),
+    };
 
-
-            final contentWidth = screenWidth.clamp(0.0, 480.0);
-
-            final scale = (contentWidth / 375).clamp(0.85, 1.2);
-
-            final horizontalPadding =
-                (contentWidth * 0.06).clamp(16.0, 28.0);
-
-            return SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  minHeight: screenHeight,
-                ),
-                child: Center(
-                  child: SizedBox(
-                    width: contentWidth,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: horizontalPadding,
-                        vertical: 12 * scale,
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-
-
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: IconButton(
-                              onPressed: onBack,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              icon: Icon(
-                                Icons.arrow_back_ios_new,
-                                size: 21 * scale,
-                                color: darkText,
-                              ),
-                            ),
-                          ),
-
-
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-
-                              SizedBox(
-                                width: 150 * scale,
-                                height: 150 * scale,
-                                child: SvgPicture.asset(
-                                  'assets/svg/lamp.svg',
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
-
-                              SizedBox(height: 20 * scale),
-
-
-                              Text(
-                                'Советы для вас',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 18 * scale,
-                                  fontWeight: FontWeight.bold,
-                                  color: darkText,
-                                ),
-                              ),
-
-                              SizedBox(height: 22 * scale),
-
-
-                              Text(
-                                'Рекомендуем сделать\n'
-                                'небольшой перерыв, если\n'
-                                'вы чувствуете усталость.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 14 * scale,
-                                  height: 1.45,
-                                  color: greyText,
-                                ),
-                              ),
-
-                              SizedBox(height: 20 * scale),
-
-
-                              Text(
-                                'Помните: хорошее\n'
-                                'самочувствие — залог\n'
-                                'безопасной поездки!',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 14 * scale,
-                                  height: 1.45,
-                                  color: greyText,
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          SizedBox(height: 100 * scale),
-
-
-                          SizedBox(
-                            width: double.infinity,
-                            height: 45 * scale,
-                            child: ElevatedButton(
-                              onPressed: onNext,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: green,
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(30),
-                                ),
-                              ),
-                              child: Text(
-                                'Понятно',
-                                style: TextStyle(
-                                  fontSize: 14 * scale,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ScootCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: passed
+                    ? colors.primaryContainer
+                    : colors.errorContainer,
+                foregroundColor: passed
+                    ? colors.onPrimaryContainer
+                    : colors.onErrorContainer,
+                child: Icon(icon, size: 32),
+              ),
+              const SizedBox(height: 16),
+              Semantics(
+                header: true,
+                child: Text(
+                  title,
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-            );
-          },
+              const SizedBox(height: 8),
+              Text(message, style: theme.textTheme.bodyLarge),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'ПДД · $score из $total',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                'Проходной балл — $trafficPassScore из $total',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+        if (advice.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          ScootCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Рекомендации', style: theme.textTheme.titleMedium),
+                for (final recommendation in advice)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.info_outline_rounded,
+                          size: 20,
+                          color: colors.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(recommendation)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (mistakes.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ExpansionTile(
+              title: const Text('Разбор ошибок'),
+              subtitle: Text('Неверных ответов — ${mistakes.length}'),
+              expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+              childrenPadding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+              children: [
+                for (final mistake in mistakes) ...[
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  Text(
+                    mistake.question.prompt,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Ваш ответ — ${mistake.question.options[mistake.answer]}',
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Правильный ответ — '
+                    '${mistake.question.options[mistake.question.correctOption]}',
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    mistake.question.explanation,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        FilledButton(onPressed: onRestart, child: const Text('Пройти заново')),
+        const SizedBox(height: 4),
+        TextButton(onPressed: onHome, child: const Text('На главный экран')),
+      ],
     );
   }
 }
