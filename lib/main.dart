@@ -1,6 +1,8 @@
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'auth_page.dart';
+import 'auth_service.dart';
 import 'complex_check.dart';
 import 'feeling.dart';
 import 'scoot_ui.dart';
@@ -11,14 +13,38 @@ void main() {
 }
 
 class ScootApp extends StatefulWidget {
-  const ScootApp({super.key});
+  const ScootApp({super.key, this.authService});
+
+  final AuthService? authService;
 
   @override
   State<ScootApp> createState() => _ScootAppState();
 }
 
 class _ScootAppState extends State<ScootApp> {
+  late final AuthService _authService = widget.authService ?? AuthService();
   ThemeMode _themeMode = ThemeMode.system;
+  AuthSession? _session;
+
+  @override
+  void dispose() {
+    if (widget.authService == null) {
+      _authService.close();
+    }
+    super.dispose();
+  }
+
+  Future<void> _logout() async {
+    final token = _session?.token;
+    setState(() => _session = null);
+    if (token != null) {
+      try {
+        await _authService.logout(token);
+      } on AuthException {
+        // Local session is cleared even if the server is temporarily unreachable.
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,23 +56,59 @@ class _ScootAppState extends State<ScootApp> {
       themeMode: _themeMode,
       home: WelcomeScreen(
         onThemeChanged: (mode) => setState(() => _themeMode = mode),
+        authService: _authService,
+        session: _session,
+        onSessionChanged: (session) => setState(() => _session = session),
+        onLogout: _logout,
       ),
     );
   }
 }
 
 class WelcomeScreen extends StatelessWidget {
-  const WelcomeScreen({super.key, required this.onThemeChanged});
+  const WelcomeScreen({
+    super.key,
+    required this.onThemeChanged,
+    required this.authService,
+    required this.session,
+    required this.onSessionChanged,
+    required this.onLogout,
+  });
 
   final ValueChanged<ThemeMode> onThemeChanged;
+  final AuthService authService;
+  final AuthSession? session;
+  final ValueChanged<AuthSession> onSessionChanged;
+  final VoidCallback onLogout;
+
+  Future<void> _openAuth(BuildContext context, AuthMode initialMode) async {
+    final result = await Navigator.push<AuthSession>(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            AuthPage(authService: authService, initialMode: initialMode),
+      ),
+    );
+    if (result != null) {
+      onSessionChanged(result);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
+    final user = session?.user;
 
     return ScootScaffold(
       actions: [
+        if (user == null)
+          IconButton(
+            onPressed: () => _openAuth(context, AuthMode.login),
+            tooltip: 'Войти в аккаунт',
+            icon: const Icon(Icons.person_outline_rounded),
+          ),
         IconButton(
           onPressed: () =>
               onThemeChanged(dark ? ThemeMode.light : ThemeMode.dark),
@@ -73,13 +135,13 @@ class WelcomeScreen extends StatelessWidget {
               'Оцените своё состояние и проверьте знание ПДД '
               'перед поездкой на электросамокате.',
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+                color: colors.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 16),
             Row(
               children: [
-                Icon(Icons.checklist_rounded, color: theme.colorScheme.primary),
+                Icon(Icons.checklist_rounded, color: colors.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -99,6 +161,65 @@ class WelcomeScreen extends StatelessWidget {
               ),
               child: const Text('Начать проверку'),
             ),
+            const SizedBox(height: 12),
+            if (user == null)
+              OutlinedButton.icon(
+                onPressed: () => _openAuth(context, AuthMode.register),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                icon: const Icon(Icons.person_outline_rounded),
+                label: const Text('Войти или зарегистрироваться'),
+              )
+            else
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.verified_user_outlined,
+                        color: colors.onPrimaryContainer,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.email,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: colors.onPrimaryContainer,
+                              ),
+                            ),
+                            Text(
+                              user.phone,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: colors.onPrimaryContainer,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: onLogout,
+                        child: const Text('Выйти'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
