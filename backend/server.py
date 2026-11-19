@@ -38,6 +38,7 @@ class ScootHTTPServer(ThreadingHTTPServer):
 
 class AuthRequestHandler(BaseHTTPRequestHandler):
     server: ScootHTTPServer
+    timeout = 15
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         if os.environ.get("SCOOT_QUIET_LOGS") == "1":
@@ -160,6 +161,7 @@ class AuthRequestHandler(BaseHTTPRequestHandler):
         self.send_response(status_code)
         self._send_cors_headers()
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
         self.wfile.write(encoded)
@@ -197,17 +199,27 @@ def main() -> None:
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.environ.get("SCOOT_PORT", "8000")),
-        help="Port to listen on (default: 8000)",
+        default=os.environ.get("SCOOT_PORT", os.environ.get("PORT", "8000")),
+        help="Port to listen on (default: SCOOT_PORT, PORT, or 8000)",
     )
     parser.add_argument(
         "--db",
         default=os.environ.get("SCOOT_DB_PATH", str(Path(__file__).with_name("scoot.db"))),
         help="Path to SQLite database file (default: backend/scoot.db)",
     )
+    parser.add_argument(
+        "--cors-origin",
+        default=os.environ.get("SCOOT_CORS_ORIGIN", "*"),
+        help="Allowed browser origin (default: *)",
+    )
     args = parser.parse_args()
 
-    server = create_server(host=args.host, port=args.port, db_path=args.db)
+    server = create_server(
+        host=args.host,
+        port=args.port,
+        db_path=args.db,
+        cors_origin=args.cors_origin,
+    )
     print(f"Scoot Auth API listening on http://{args.host}:{args.port} (DB: {args.db})")
     try:
         server.serve_forever()

@@ -9,6 +9,11 @@ import 'scoot_ui.dart';
 import 'session_storage.dart';
 import 'traffic_questions.dart';
 
+const _authEnabled = bool.fromEnvironment(
+  'SCOOT_AUTH_ENABLED',
+  defaultValue: true,
+);
+
 void main() {
   runApp(const ScootApp());
 }
@@ -33,7 +38,9 @@ class _ScootAppState extends State<ScootApp> {
   @override
   void initState() {
     super.initState();
-    _restoreSession();
+    if (_authEnabled) {
+      _restoreSession();
+    }
   }
 
   @override
@@ -138,7 +145,7 @@ class WelcomeScreen extends StatelessWidget {
 
     return ScootScaffold(
       actions: [
-        if (user == null)
+        if (_authEnabled && user == null)
           IconButton(
             onPressed: () => _openAuth(context, AuthMode.login),
             tooltip: 'Войти в аккаунт',
@@ -196,8 +203,8 @@ class WelcomeScreen extends StatelessWidget {
               ),
               child: const Text('Начать проверку'),
             ),
-            const SizedBox(height: 12),
-            if (user == null)
+            if (_authEnabled) const SizedBox(height: 12),
+            if (_authEnabled && user == null)
               OutlinedButton.icon(
                 onPressed: () => _openAuth(context, AuthMode.register),
                 style: OutlinedButton.styleFrom(
@@ -209,7 +216,7 @@ class WelcomeScreen extends StatelessWidget {
                 icon: const Icon(Icons.person_outline_rounded),
                 label: const Text('Войти или зарегистрироваться'),
               )
-            else
+            else if (user != null)
               DecoratedBox(
                 decoration: BoxDecoration(
                   color: colors.primaryContainer,
