@@ -4,31 +4,30 @@ import 'package:material_ui/material_ui.dart';
 import 'auth_page.dart';
 import 'auth_service.dart';
 import 'complex_check.dart';
-import 'feeling.dart';
-import 'scoot_ui.dart';
+import 'ride_dashboard.dart';
+import 'saferide_ui.dart';
 import 'session_storage.dart';
-import 'traffic_questions.dart';
 
 const _authEnabled = bool.fromEnvironment(
-  'SCOOT_AUTH_ENABLED',
-  defaultValue: true,
+  'SAFERIDE_AUTH_ENABLED',
+  defaultValue: bool.fromEnvironment('SCOOT_AUTH_ENABLED', defaultValue: true),
 );
 
 void main() {
-  runApp(const ScootApp());
+  runApp(const SaferideApp());
 }
 
-class ScootApp extends StatefulWidget {
-  const ScootApp({super.key, this.authService, this.sessionStorage});
+class SaferideApp extends StatefulWidget {
+  const SaferideApp({super.key, this.authService, this.sessionStorage});
 
   final AuthService? authService;
   final SessionStorage? sessionStorage;
 
   @override
-  State<ScootApp> createState() => _ScootAppState();
+  State<SaferideApp> createState() => _SaferideAppState();
 }
 
-class _ScootAppState extends State<ScootApp> {
+class _SaferideAppState extends State<SaferideApp> {
   late final AuthService _authService = widget.authService ?? AuthService();
   late final SessionStorage _sessionStorage =
       widget.sessionStorage ?? createSessionStorage();
@@ -91,10 +90,10 @@ class _ScootAppState extends State<ScootApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Scoot',
+      title: 'saferide',
       debugShowCheckedModeBanner: false,
-      theme: scootTheme(Brightness.light),
-      darkTheme: scootTheme(Brightness.dark),
+      theme: saferideTheme(Brightness.light),
+      darkTheme: saferideTheme(Brightness.dark),
       themeMode: _themeMode,
       home: WelcomeScreen(
         onThemeChanged: (mode) => setState(() => _themeMode = mode),
@@ -139,129 +138,70 @@ class WelcomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;
-    final user = session?.user;
+    final themeAction = IconButton(
+      onPressed: () => onThemeChanged(dark ? ThemeMode.light : ThemeMode.dark),
+      tooltip: dark ? 'Включить светлую тему' : 'Включить тёмную тему',
+      icon: Icon(dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined),
+    );
 
-    return ScootScaffold(
+    if (session case final AuthSession active) {
+      return RideDashboard(
+        key: ValueKey(active.user.id),
+        service: authService,
+        session: active,
+        onLogout: onLogout,
+        themeAction: themeAction,
+      );
+    }
+
+    return SaferideScaffold(
       actions: [
-        if (_authEnabled && user == null)
+        if (_authEnabled)
           IconButton(
             onPressed: () => _openAuth(context, AuthMode.login),
             tooltip: 'Войти в аккаунт',
             icon: const Icon(Icons.person_outline_rounded),
           ),
-        IconButton(
-          onPressed: () =>
-              onThemeChanged(dark ? ThemeMode.light : ThemeMode.dark),
-          tooltip: dark ? 'Включить светлую тему' : 'Включить тёмную тему',
-          icon: Icon(
-            dark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-          ),
-        ),
+        themeAction,
       ],
-      child: ScootCard(
+      child: SaferideCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _WelcomeIllustration(dark: dark),
             const SizedBox(height: 20),
             Text(
-              'Добро пожаловать в Scoot!',
+              'Добро пожаловать в saferide!',
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
-              'Оцените своё состояние и проверьте знание ПДД '
-              'перед поездкой на электросамокате.',
+              _authEnabled
+                  ? 'Войдите или создайте аккаунт, чтобы пройти большой тест. '
+                        'После зачёта откроется короткая проверка перед каждой поездкой.'
+                  : 'Оцените своё состояние и проверьте знание ПДД перед поездкой.',
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: colors.onSurfaceVariant,
+                color: theme.colorScheme.onSurfaceVariant,
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Icon(Icons.checklist_rounded, color: colors.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${readinessQuestions.length} вопроса о состоянии '
-                    'и $trafficQuestionCount вопросов по ПДД',
-                  ),
-                ),
-              ],
             ),
             const SizedBox(height: 20),
             FilledButton(
-              onPressed: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ComprehensiveCheckPage(),
-                ),
+              onPressed: _authEnabled
+                  ? () => _openAuth(context, AuthMode.register)
+                  : () => Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => const ComprehensiveCheckPage(),
+                      ),
+                    ),
+              child: Text(
+                _authEnabled
+                    ? 'Войти или зарегистрироваться'
+                    : 'Начать проверку',
               ),
-              child: const Text('Начать проверку'),
             ),
-            if (_authEnabled) const SizedBox(height: 12),
-            if (_authEnabled && user == null)
-              OutlinedButton.icon(
-                onPressed: () => _openAuth(context, AuthMode.register),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, 48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                ),
-                icon: const Icon(Icons.person_outline_rounded),
-                label: const Text('Войти или зарегистрироваться'),
-              )
-            else if (user != null)
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colors.primaryContainer,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.verified_user_outlined,
-                        color: colors.onPrimaryContainer,
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.email,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: colors.onPrimaryContainer,
-                              ),
-                            ),
-                            Text(
-                              user.phone,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: colors.onPrimaryContainer,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: onLogout,
-                        child: const Text('Выйти'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -330,7 +270,7 @@ class _WelcomeIllustrationColors extends ColorMapper {
       'path158' ||
       'path159' ||
       'path160' => const Color(0xFFDCEFE9),
-      'path155' || 'path157' => scootDarkCardColor,
+      'path155' || 'path157' => saferideDarkCardColor,
       'path32' || 'path151' => color,
       'path42' || 'path62' => const Color(0xFF2D7563),
       'path43' || 'path63' || 'path65' => const Color(0xFF286050),

@@ -6,12 +6,17 @@ import 'package:path_provider/path_provider.dart';
 import 'auth_service.dart';
 import 'session_storage.dart';
 
-const _sessionFileName = 'scoot_auth_session_v1.json';
+const _sessionFileName = 'saferide_auth_session_v1.json';
+const _legacySessionFileName = 'scoot_auth_session_v1.json';
 
 SessionStorage createPlatformSessionStorage() => _IoSessionStorage();
 
 class _IoSessionStorage implements SessionStorage {
   AuthSession? _fallback;
+
+  File _legacyFile(File file) => File(
+    '${file.parent.path}${Platform.pathSeparator}$_legacySessionFileName',
+  );
 
   Future<File?> _resolveFile() async {
     try {
@@ -27,8 +32,9 @@ class _IoSessionStorage implements SessionStorage {
     final file = await _resolveFile();
     if (file == null) return _fallback;
     try {
-      if (!await file.exists()) return null;
-      final raw = await file.readAsString();
+      final stored = await file.exists() ? file : _legacyFile(file);
+      if (!await stored.exists()) return null;
+      final raw = await stored.readAsString();
       if (raw.isEmpty) return null;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return null;
@@ -46,6 +52,8 @@ class _IoSessionStorage implements SessionStorage {
     try {
       await file.parent.create(recursive: true);
       await file.writeAsString(jsonEncode(session.toJson()), flush: true);
+      final legacy = _legacyFile(file);
+      if (await legacy.exists()) await legacy.delete();
     } on Object {
       // Fall back to in-memory storage if filesystem writes fail.
     }
@@ -56,12 +64,12 @@ class _IoSessionStorage implements SessionStorage {
     _fallback = null;
     final file = await _resolveFile();
     if (file == null) return;
-    try {
-      if (await file.exists()) {
-        await file.delete();
+    for (final stored in [file, _legacyFile(file)]) {
+      try {
+        if (await stored.exists()) await stored.delete();
+      } on Object {
+        // Ignore deletion errors.
       }
-    } on Object {
-      // Ignore deletion errors.
     }
   }
 }

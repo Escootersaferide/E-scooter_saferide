@@ -1,9 +1,20 @@
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
-import 'package:saferide/main.dart';
+import 'package:saferide/complex_check.dart';
+import 'package:saferide/saferide_ui.dart';
 import 'package:saferide/traffic_questions.dart';
+
+final trafficQuestions = parseTrafficQuestions(
+  File(trafficQuestionAsset).readAsStringSync(),
+);
+
+Widget guestCheck({Brightness brightness = Brightness.light}) => MaterialApp(
+  theme: saferideTheme(brightness),
+  home: ComprehensiveCheckPage(trafficBank: trafficQuestions),
+);
 
 Future<void> tapAndSettle(WidgetTester tester, Finder target) async {
   await tester.ensureVisible(target);
@@ -12,7 +23,6 @@ Future<void> tapAndSettle(WidgetTester tester, Finder target) async {
 }
 
 Future<void> openCheck(WidgetTester tester) async {
-  await tapAndSettle(tester, find.text('Начать проверку'));
   await tapAndSettle(tester, find.text('Начать'));
 }
 
@@ -66,20 +76,23 @@ void main() {
 
   test('An attempt draws ten distinct questions in a random order', () {
     final random = Random(42);
-    final first = drawTrafficQuestions(random);
-    final second = drawTrafficQuestions(random);
+    final first = drawTrafficQuestions(random, trafficQuestions);
+    final second = drawTrafficQuestions(random, trafficQuestions);
     expect(first, hasLength(trafficQuestionCount));
     expect(first.toSet(), hasLength(trafficQuestionCount));
     expect(second.toSet(), hasLength(trafficQuestionCount));
     expect(first.toSet(), isNot(equals(second.toSet())));
     expect(first, isNot(equals(trafficQuestions.take(trafficQuestionCount))));
-    expect(drawTrafficQuestions(Random(42)), orderedEquals(first));
+    expect(
+      drawTrafficQuestions(Random(42), trafficQuestions),
+      orderedEquals(first),
+    );
   });
 
   testWidgets('A new question requires a choice and back keeps the answer', (
     tester,
   ) async {
-    await tester.pumpWidget(const ScootApp());
+    await tester.pumpWidget(guestCheck());
     await openCheck(tester);
 
     expect(find.text('Шаг 1 из 3'), findsOneWidget);
@@ -114,8 +127,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(const ScootApp());
-    await tapAndSettle(tester, find.byTooltip('Включить тёмную тему'));
+    await tester.pumpWidget(guestCheck(brightness: Brightness.dark));
     await openCheck(tester);
 
     for (var i = 0; i < 4; i++) {
@@ -154,7 +166,7 @@ void main() {
   testWidgets('Readiness risks override a perfect traffic score', (
     tester,
   ) async {
-    await tester.pumpWidget(const ScootApp());
+    await tester.pumpWidget(guestCheck());
     await openCheck(tester);
 
     for (final option in [2, 1, 2, 1]) {
@@ -175,13 +187,13 @@ void main() {
     expect(find.byIcon(Icons.emoji_events_rounded), findsNothing);
 
     await tapAndSettle(tester, find.text('На главный экран'));
-    expect(find.text('Добро пожаловать в Scoot!'), findsOneWidget);
+    expect(find.text('Комплексная проверка'), findsOneWidget);
   });
 
   testWidgets('Seven correct answers fail, an edit updates the score', (
     tester,
   ) async {
-    await tester.pumpWidget(const ScootApp());
+    await tester.pumpWidget(guestCheck());
     await openCheck(tester);
 
     for (var i = 0; i < 4; i++) {

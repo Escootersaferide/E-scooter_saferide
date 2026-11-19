@@ -3,9 +3,14 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-const defaultScootApiUrl = String.fromEnvironment(
-  'SCOOT_API_URL',
-  defaultValue: 'http://127.0.0.1:8000',
+import 'assessment.dart';
+
+const defaultSaferideApiUrl = String.fromEnvironment(
+  'SAFERIDE_API_URL',
+  defaultValue: String.fromEnvironment(
+    'SCOOT_API_URL',
+    defaultValue: 'http://127.0.0.1:8000',
+  ),
 );
 
 const minPasswordLength = 8;
@@ -111,7 +116,7 @@ class AuthException implements Exception {
 
 class AuthService {
   AuthService({
-    String baseUrl = defaultScootApiUrl,
+    String baseUrl = defaultSaferideApiUrl,
     http.Client? client,
     this.timeout = const Duration(seconds: 10),
   }) : baseUrl = baseUrl.replaceFirst(RegExp(r'/+$'), ''),
@@ -158,6 +163,28 @@ class AuthService {
   Future<void> logout(String token) async {
     await _post('/api/auth/logout', body: const {}, token: token);
   }
+
+  Future<RideOverview> rideOverview(String token) async =>
+      RideOverview.fromJson(await _get('/api/rides', token: token));
+
+  Future<AssessmentAttempt> startAssessment(
+    String token,
+    AssessmentKind kind,
+  ) async => AssessmentAttempt.fromJson(
+    await _post('/api/rides/start', token: token, body: {'kind': kind.name}),
+  );
+
+  Future<AssessmentResult> submitAssessment(
+    String token,
+    String id,
+    List<int> answers,
+  ) async => AssessmentResult.fromJson(
+    await _post(
+      '/api/rides/submit',
+      token: token,
+      body: {'id': id, 'answers': answers},
+    ),
+  );
 
   void close() {
     if (_ownsClient) {

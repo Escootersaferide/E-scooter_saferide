@@ -1,8 +1,8 @@
 import 'package:material_ui/material_ui.dart';
 
-const scootDarkCardColor = Color(0xFF20332F);
+const saferideDarkCardColor = Color(0xFF20332F);
 
-ThemeData scootTheme(Brightness brightness) {
+ThemeData saferideTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final colors = ColorScheme.fromSeed(
     brightness: brightness,
@@ -14,7 +14,7 @@ ThemeData scootTheme(Brightness brightness) {
         ? const Color(0xFFDCF7EF)
         : const Color(0xFF163A33),
     surface: dark ? const Color(0xFF142423) : const Color(0xFFF3F6F5),
-    surfaceContainerLow: dark ? scootDarkCardColor : Colors.white,
+    surfaceContainerLow: dark ? saferideDarkCardColor : Colors.white,
   );
 
   return ThemeData(
@@ -37,8 +37,8 @@ ThemeData scootTheme(Brightness brightness) {
   );
 }
 
-class ScootScaffold extends StatelessWidget {
-  const ScootScaffold({
+class SaferideScaffold extends StatelessWidget {
+  const SaferideScaffold({
     super.key,
     required this.child,
     this.scrollKey,
@@ -70,9 +70,10 @@ class ScootScaffold extends StatelessWidget {
             button: true,
             label: 'На главную',
             child: InkWell(
-              key: const ValueKey('scoot_home_logo'),
+              key: const ValueKey('saferide_home_logo'),
               borderRadius: BorderRadius.circular(10),
-              onTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
+              onTap: () =>
+                  Navigator.of(context).popUntil((route) => route.isFirst),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
                 child: Row(
@@ -80,7 +81,7 @@ class ScootScaffold extends StatelessWidget {
                   children: [
                     Icon(Icons.bolt_rounded, color: theme.colorScheme.primary),
                     const SizedBox(width: 4),
-                    const Text('Scoot'),
+                    const Text('saferide'),
                   ],
                 ),
               ),
@@ -106,8 +107,8 @@ class ScootScaffold extends StatelessWidget {
   }
 }
 
-class ScootCard extends StatelessWidget {
-  const ScootCard({super.key, required this.child});
+class SaferideCard extends StatelessWidget {
+  const SaferideCard({super.key, required this.child});
 
   final Widget child;
 

@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'auth_service.dart';
-import 'scoot_ui.dart';
+import 'saferide_ui.dart';
 
 enum AuthMode { login, register }
 
@@ -94,8 +94,8 @@ class _AuthPageState extends State<AuthPage> {
     final colors = theme.colorScheme;
     final isRegister = _mode == AuthMode.register;
 
-    return ScootScaffold(
-      child: ScootCard(
+    return SaferideScaffold(
+      child: SaferideCard(
         child: Form(
           key: _formKey,
           child: AutofillGroup(

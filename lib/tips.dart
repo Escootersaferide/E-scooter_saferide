@@ -1,7 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'ride_result.dart';
-import 'scoot_ui.dart';
+import 'saferide_ui.dart';
 
 class RideRecommendations extends StatelessWidget {
   const RideRecommendations({
@@ -29,7 +29,7 @@ class RideRecommendations extends StatelessWidget {
       'Уступайте пешеходам и спешивайтесь на пешеходных переходах.',
     ];
 
-    return ScootCard(
+    return SaferideCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

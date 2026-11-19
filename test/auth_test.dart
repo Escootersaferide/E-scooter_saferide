@@ -18,7 +18,7 @@ http.Response _jsonResponse(Map<String, Object?> body, {int status = 200}) {
 
 void main() {
   test('Validators accept valid email, phone, and password', () {
-    expect(validateEmail('rider@scoot.ru'), isNull);
+    expect(validateEmail('rider@saferide.ru'), isNull);
     expect(validateEmail('invalid'), isNotNull);
 
     expect(validatePhone('+7 (999) 123-45-67'), isNull);
@@ -38,14 +38,14 @@ void main() {
     final mockClient = MockClient((request) async {
       if (request.url.path == '/api/auth/register') {
         final payload = jsonDecode(request.body) as Map<String, dynamic>;
-        expect(payload['email'], 'dmitrii@scoot.ru');
+        expect(payload['email'], 'dmitrii@saferide.ru');
         expect(payload['phone'], '+7 (999) 123-45-67');
         expect(payload['password'], 'SecretPass123');
         return _jsonResponse({
           'token': 'test-token-123',
           'user': {
             'id': 1,
-            'email': 'dmitrii@scoot.ru',
+            'email': 'dmitrii@saferide.ru',
             'phone': '+79991234567',
             'created_at': '2026-11-19T10:00:00Z',
           },
@@ -57,10 +57,18 @@ void main() {
         return _jsonResponse({
           'user': {
             'id': 1,
-            'email': 'dmitrii@scoot.ru',
+            'email': 'dmitrii@saferide.ru',
             'phone': '+79991234567',
             'created_at': '2026-11-19T10:00:00Z',
           },
+        });
+      }
+      if (request.url.path == '/api/rides') {
+        expect(request.headers['Authorization'], 'Bearer test-token-123');
+        return _jsonResponse({
+          'qualified_at': null,
+          'retry_after_seconds': 0,
+          'history': [],
         });
       }
       if (request.url.path == '/api/auth/logout') {
@@ -76,7 +84,7 @@ void main() {
     );
 
     await tester.pumpWidget(
-      ScootApp(
+      SaferideApp(
         key: const ValueKey('first_mount'),
         authService: service,
         sessionStorage: storage,
@@ -88,7 +96,7 @@ void main() {
 
     await tester.enterText(
       find.byKey(const ValueKey('auth_email_field')),
-      'dmitrii@scoot.ru',
+      'dmitrii@saferide.ru',
     );
     await tester.enterText(
       find.byKey(const ValueKey('auth_phone_field')),
@@ -103,16 +111,23 @@ void main() {
       'SecretPass123',
     );
 
-    await tester.ensureVisible(find.byKey(const ValueKey('auth_submit_button')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('auth_submit_button')),
+    );
     await tester.tap(find.byKey(const ValueKey('auth_submit_button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('dmitrii@scoot.ru'), findsOneWidget);
+    await tester.tap(find.byTooltip('Профиль'));
+    await tester.pumpAndSettle();
+    expect(find.text('dmitrii@saferide.ru'), findsOneWidget);
     expect(find.text('+79991234567'), findsOneWidget);
 
-    // Simulate page reload with a fresh ScootApp backed by the same storage.
+    await tester.tap(find.byTooltip('Назад'));
+    await tester.pumpAndSettle();
+
+    // Simulate page reload with a fresh SaferideApp backed by the same storage.
     await tester.pumpWidget(
-      ScootApp(
+      SaferideApp(
         key: const ValueKey('reloaded_mount'),
         authService: service,
         sessionStorage: storage,
@@ -121,7 +136,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(meCalls, 1);
-    expect(find.text('dmitrii@scoot.ru'), findsOneWidget);
+    await tester.tap(find.byTooltip('Профиль'));
+    await tester.pumpAndSettle();
+    expect(find.text('dmitrii@saferide.ru'), findsOneWidget);
     expect(find.text('+79991234567'), findsOneWidget);
 
     await tester.ensureVisible(find.text('Выйти'));
@@ -133,36 +150,37 @@ void main() {
     expect(find.text('Войти или зарегистрироваться'), findsOneWidget);
   });
 
-  testWidgets('Expired stored session is cleared when /api/auth/me returns 401', (
-    tester,
-  ) async {
-    final storage = MemorySessionStorage(
-      const AuthSession(
-        token: 'expired-token',
-        user: AuthUser(
-          id: 1,
-          email: 'old@scoot.ru',
-          phone: '+79990000000',
-          createdAt: '2026-11-19T10:00:00Z',
+  testWidgets(
+    'Expired stored session is cleared when /api/auth/me returns 401',
+    (tester) async {
+      final storage = MemorySessionStorage(
+        const AuthSession(
+          token: 'expired-token',
+          user: AuthUser(
+            id: 1,
+            email: 'old@saferide.ru',
+            phone: '+79990000000',
+            createdAt: '2026-11-19T10:00:00Z',
+          ),
         ),
-      ),
-    );
-    final mockClient = MockClient((request) async {
-      return _jsonResponse({'error': 'Сессия истекла.'}, status: 401);
-    });
-    final service = AuthService(
-      baseUrl: 'http://127.0.0.1:8000',
-      client: mockClient,
-    );
+      );
+      final mockClient = MockClient((request) async {
+        return _jsonResponse({'error': 'Сессия истекла.'}, status: 401);
+      });
+      final service = AuthService(
+        baseUrl: 'http://127.0.0.1:8000',
+        client: mockClient,
+      );
 
-    await tester.pumpWidget(
-      ScootApp(authService: service, sessionStorage: storage),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        SaferideApp(authService: service, sessionStorage: storage),
+      );
+      await tester.pumpAndSettle();
 
-    expect(await storage.load(), isNull);
-    expect(find.text('Войти или зарегистрироваться'), findsOneWidget);
-  });
+      expect(await storage.load(), isNull);
+      expect(find.text('Войти или зарегистрироваться'), findsOneWidget);
+    },
+  );
 
   testWidgets('Login shows backend error message on invalid credentials', (
     tester,
@@ -178,45 +196,144 @@ void main() {
     );
 
     await tester.pumpWidget(
-      ScootApp(authService: service, sessionStorage: MemorySessionStorage()),
+      SaferideApp(authService: service, sessionStorage: MemorySessionStorage()),
     );
     await tester.tap(find.byTooltip('Войти в аккаунт'));
     await tester.pumpAndSettle();
 
     await tester.enterText(
       find.byKey(const ValueKey('auth_identifier_field')),
-      'dmitrii@scoot.ru',
+      'dmitrii@saferide.ru',
     );
     await tester.enterText(
       find.byKey(const ValueKey('auth_password_field')),
       'WrongPass123',
     );
 
-    await tester.ensureVisible(find.byKey(const ValueKey('auth_submit_button')));
+    await tester.ensureVisible(
+      find.byKey(const ValueKey('auth_submit_button')),
+    );
     await tester.tap(find.byKey(const ValueKey('auth_submit_button')));
     await tester.pumpAndSettle();
 
     expect(find.text('Неверный email/телефон или пароль.'), findsOneWidget);
   });
 
-  testWidgets('Tapping the top-left Scoot logo returns to the home screen', (
+  testWidgets(
+    'Qualification unlocks the menu and failed orders show cooldown and history',
+    (tester) async {
+      const user = AuthUser(
+        id: 2,
+        email: 'rider@example.test',
+        phone: '+79990000001',
+        createdAt: '2026-11-19T10:00:00Z',
+      );
+      var qualified = false;
+      var failedOrder = false;
+      const failed = {
+        'completed_at': '2026-11-19T10:02:00Z',
+        'passed': false,
+        'readiness_ok': true,
+        'score': 3,
+        'total': 5,
+      };
+      final client = MockClient((request) async {
+        expect(request.headers['Authorization'], 'Bearer rider-token');
+        switch (request.url.path) {
+          case '/api/auth/me':
+            return _jsonResponse({'user': user.toJson()});
+          case '/api/rides':
+            return _jsonResponse({
+              'qualified_at': qualified ? '2026-11-19T10:01:00Z' : null,
+              'retry_after_seconds': failedOrder ? 300 : 0,
+              'history': failedOrder ? [failed] : [],
+            });
+          case '/api/rides/start':
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            expect(body['kind'], qualified ? 'order' : 'qualification');
+            return _jsonResponse({
+              'id': body['kind'],
+              'min_score': qualified ? 5 : 16,
+              'questions': [
+                {
+                  'category': 'traffic',
+                  'prompt': 'Кто имеет приоритет?',
+                  'options': ['Пешеход', 'Самокатчик'],
+                },
+              ],
+            });
+          case '/api/rides/submit':
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            expect(body['answers'], [0]);
+            if (body['id'] == 'qualification') {
+              qualified = true;
+              return _jsonResponse({
+                'completed_at': '2026-11-19T10:01:00Z',
+                'passed': true,
+                'readiness_ok': true,
+                'score': 16,
+                'total': 20,
+              });
+            }
+            expect(body['id'], 'order');
+            failedOrder = true;
+            return _jsonResponse(failed);
+        }
+        return _jsonResponse({'error': 'Not found'}, status: 404);
+      });
+      await tester.pumpWidget(
+        SaferideApp(
+          authService: AuthService(client: client),
+          sessionStorage: MemorySessionStorage(
+            const AuthSession(token: 'rider-token', user: user),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      Future<void> tap(Finder target) async {
+        await tester.ensureVisible(target);
+        await tester.tap(target);
+        await tester.pumpAndSettle();
+      }
+
+      expect(find.text('Заказать самокат'), findsNothing);
+      await tap(find.text('Пройти большой тест'));
+      await tap(find.text('Пешеход'));
+      await tap(find.text('Завершить тест'));
+      expect(find.text('Большой тест пройден'), findsOneWidget);
+      await tap(find.text('К меню поездок'));
+      expect(find.text('Меню поездок'), findsOneWidget);
+      await tap(find.text('Заказать самокат'));
+      await tap(find.text('Пешеход'));
+      await tap(find.text('Завершить тест'));
+      expect(find.textContaining('через 5 минут'), findsOneWidget);
+      await tap(find.text('К меню поездок'));
+      expect(find.textContaining('Следующая попытка через'), findsOneWidget);
+      expect(
+        tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull,
+      );
+      await tap(find.text('История заказов'));
+      expect(find.text('Тест не пройден'), findsOneWidget);
+      expect(find.text('3 из 5'), findsOneWidget);
+    },
+  );
+
+  testWidgets('Tapping the top-left Saferide logo returns to the home screen', (
     tester,
   ) async {
     await tester.pumpWidget(
-      ScootApp(sessionStorage: MemorySessionStorage()),
+      SaferideApp(sessionStorage: MemorySessionStorage()),
     );
-    await tester.ensureVisible(find.text('Начать проверку'));
-    await tester.tap(find.text('Начать проверку'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Начать'));
-    await tester.tap(find.text('Начать'));
+    await tester.tap(find.byTooltip('Войти в аккаунт'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Шаг 1 из 3'), findsOneWidget);
+    expect(find.byKey(const ValueKey('auth_identifier_field')), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('scoot_home_logo')));
+    await tester.tap(find.byKey(const ValueKey('saferide_home_logo')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Добро пожаловать в Scoot!'), findsOneWidget);
+    expect(find.text('Добро пожаловать в saferide!'), findsOneWidget);
   });
 }

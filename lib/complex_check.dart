@@ -1,18 +1,20 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'ride_check.dart';
-import 'scoot_ui.dart';
+import 'saferide_ui.dart';
 import 'traffic_questions.dart';
 
 class ComprehensiveCheckPage extends StatelessWidget {
-  const ComprehensiveCheckPage({super.key});
+  const ComprehensiveCheckPage({super.key, this.trafficBank});
+
+  final List<TrafficQuestion>? trafficBank;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return ScootScaffold(
-      child: ScootCard(
+    return SaferideScaffold(
+      child: SaferideCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -41,17 +43,23 @@ class ComprehensiveCheckPage extends StatelessWidget {
             Text(
               'Для зачёта по ПДД нужно набрать $trafficPassScore из '
               '$trafficQuestionCount. Если ответы укажут на риск, '
-              'Scoot порекомендует отложить поездку независимо от балла.',
+              'saferide порекомендует отложить поездку независимо от балла.',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(builder: (_) => const RideCheckPage()),
-              ),
+              onPressed: () async {
+                final bank = trafficBank ?? await loadTrafficQuestions();
+                if (!context.mounted) return;
+                await Navigator.push<void>(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => RideCheckPage(trafficBank: bank),
+                  ),
+                );
+              },
               child: const Text('Начать'),
             ),
           ],

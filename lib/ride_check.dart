@@ -3,13 +3,16 @@ import 'dart:math';
 import 'package:material_ui/material_ui.dart';
 
 import 'feeling.dart';
+import 'question_card.dart';
 import 'ride_result.dart';
-import 'scoot_ui.dart';
+import 'saferide_ui.dart';
 import 'tips.dart';
 import 'traffic_questions.dart';
 
 class RideCheckPage extends StatefulWidget {
-  const RideCheckPage({super.key});
+  const RideCheckPage({super.key, required this.trafficBank});
+
+  final List<TrafficQuestion> trafficBank;
 
   @override
   State<RideCheckPage> createState() => _RideCheckPageState();
@@ -17,7 +20,10 @@ class RideCheckPage extends StatefulWidget {
 
 class _RideCheckPageState extends State<RideCheckPage> {
   final _random = Random();
-  late var _trafficQuestions = drawTrafficQuestions(_random);
+  late var _trafficQuestions = drawTrafficQuestions(
+    _random,
+    widget.trafficBank,
+  );
   final _answers = List<int?>.filled(
     readinessQuestions.length + trafficQuestionCount,
     null,
@@ -26,7 +32,7 @@ class _RideCheckPageState extends State<RideCheckPage> {
 
   void _restart() {
     setState(() {
-      _trafficQuestions = drawTrafficQuestions(_random);
+      _trafficQuestions = drawTrafficQuestions(_random, widget.trafficBank);
       _answers.fillRange(0, _answers.length, null);
       _step = 0;
     });
@@ -75,7 +81,7 @@ class _RideCheckPageState extends State<RideCheckPage> {
 
       content = _CheckStage(
         number: isReadiness ? 1 : 2,
-        child: _QuestionCard(
+        child: QuestionCard(
           section: isReadiness ? 'Проверка самочувствия' : 'Тест по ПДД',
           number: index + 1,
           count: isReadiness ? readinessCount : _trafficQuestions.length,
@@ -98,7 +104,7 @@ class _RideCheckPageState extends State<RideCheckPage> {
           setState(() => _step--);
         }
       },
-      child: ScootScaffold(scrollKey: ValueKey(step), child: content),
+      child: SaferideScaffold(scrollKey: ValueKey(step), child: content),
     );
   }
 }
@@ -142,105 +148,6 @@ class _CheckStage extends StatelessWidget {
         ),
         child,
       ],
-    );
-  }
-}
-
-class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({
-    required this.section,
-    required this.number,
-    required this.count,
-    required this.prompt,
-    required this.options,
-    required this.selected,
-    required this.onSelect,
-    required this.nextLabel,
-    required this.onNext,
-  });
-
-  final String section;
-  final int number;
-  final int count;
-  final String prompt;
-  final List<String> options;
-  final int? selected;
-  final ValueChanged<int?> onSelect;
-  final String nextLabel;
-  final VoidCallback? onNext;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = theme.colorScheme;
-
-    return ScootCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12,
-            runSpacing: 4,
-            children: [
-              Text(
-                section,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              Text(
-                'Вопрос $number из $count',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Semantics(
-            container: true,
-            headingLevel: 2,
-            child: Text(
-              prompt,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          RadioGroup<int>(
-            groupValue: selected,
-            onChanged: onSelect,
-            child: Column(
-              children: [
-                for (final (index, option) in options.indexed)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: RadioListTile<int>(
-                      value: index,
-                      selected: selected == index,
-                      activeColor: colors.primary,
-                      selectedTileColor: colors.primaryContainer,
-                      shape: RoundedRectangleBorder(
-                        side: BorderSide(
-                          color: selected == index
-                              ? colors.primary
-                              : colors.outlineVariant,
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      title: Text(option),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          FilledButton(onPressed: onNext, child: Text(nextLabel)),
-        ],
-      ),
     );
   }
 }

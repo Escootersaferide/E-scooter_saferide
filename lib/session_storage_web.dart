@@ -5,7 +5,8 @@ import 'package:web/web.dart' as web;
 import 'auth_service.dart';
 import 'session_storage.dart';
 
-const _storageKey = 'scoot_auth_session_v1';
+const _storageKey = 'saferide_auth_session_v1';
+const _legacyStorageKey = 'scoot_auth_session_v1';
 
 SessionStorage createPlatformSessionStorage() => _WebSessionStorage();
 
@@ -13,7 +14,9 @@ class _WebSessionStorage implements SessionStorage {
   @override
   Future<AuthSession?> load() async {
     try {
-      final raw = web.window.localStorage.getItem(_storageKey);
+      final raw =
+          web.window.localStorage.getItem(_storageKey) ??
+          web.window.localStorage.getItem(_legacyStorageKey);
       if (raw == null || raw.isEmpty) return null;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return null;
@@ -26,7 +29,11 @@ class _WebSessionStorage implements SessionStorage {
   @override
   Future<void> save(AuthSession session) async {
     try {
-      web.window.localStorage.setItem(_storageKey, jsonEncode(session.toJson()));
+      web.window.localStorage.setItem(
+        _storageKey,
+        jsonEncode(session.toJson()),
+      );
+      web.window.localStorage.removeItem(_legacyStorageKey);
     } on Object {
       // Ignore storage errors (e.g. restricted private browsing mode).
     }
@@ -36,6 +43,7 @@ class _WebSessionStorage implements SessionStorage {
   Future<void> clear() async {
     try {
       web.window.localStorage.removeItem(_storageKey);
+      web.window.localStorage.removeItem(_legacyStorageKey);
     } on Object {
       // Ignore storage errors.
     }

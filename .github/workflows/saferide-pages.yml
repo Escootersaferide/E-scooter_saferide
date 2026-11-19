@@ -1,4 +1,4 @@
-name: Deploy Scoot to GitHub Pages
+name: Deploy saferide to GitHub Pages
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: scoot-pages
+  group: saferide-pages
   cancel-in-progress: false
 
 jobs:
@@ -18,7 +18,7 @@ jobs:
       contents: read
       pages: read
     steps:
-      - name: Check out Scoot
+      - name: Check out saferide
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -40,16 +40,16 @@ jobs:
       - name: Build the web app
         env:
           PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
-          SCOOT_API_URL: ${{ vars.SCOOT_API_URL || 'https://scoot-api-production.up.railway.app' }}
+          SAFERIDE_API_URL: ${{ vars.SAFERIDE_API_URL || vars.SCOOT_API_URL || 'https://scoot-api-production.up.railway.app' }}
         shell: bash
         run: |
-          auth_flags=(--dart-define=SCOOT_AUTH_ENABLED=false)
-          if [[ -n "$SCOOT_API_URL" ]]; then
-            if [[ "$SCOOT_API_URL" != https://?* ]]; then
-              printf '%s\n' 'SCOOT_API_URL must be an HTTPS URL.' >&2
+          auth_flags=(--dart-define=SAFERIDE_AUTH_ENABLED=false)
+          if [[ -n "$SAFERIDE_API_URL" ]]; then
+            if [[ "$SAFERIDE_API_URL" != https://?* ]]; then
+              printf '%s\n' 'SAFERIDE_API_URL must be an HTTPS URL.' >&2
               exit 1
             fi
-            auth_flags=("--dart-define=SCOOT_API_URL=$SCOOT_API_URL")
+            auth_flags=("--dart-define=SAFERIDE_API_URL=$SAFERIDE_API_URL")
           fi
           flutter build web --no-pub --no-web-resources-cdn \
             --web-content-hash --base-href "${PAGES_BASE_PATH%/}/" "${auth_flags[@]}"

@@ -24,5 +24,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  assets: ['assets/svg/main.svg', 'assets/svg/mini_check.svg', 'assets/svg/feeling.svg', 'assets/svg/lamp.svg']
+  assets:
+    - assets/svg/main.svg
+    - assets/svg/mini_check.svg
+    - assets/svg/feeling.svg
+    - assets/svg/lamp.svg
+    - assets/questions/traffic.json
     
