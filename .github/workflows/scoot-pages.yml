@@ -40,7 +40,7 @@ jobs:
       - name: Build the web app
         env:
           PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
-          SCOOT_API_URL: ${{ vars.SCOOT_API_URL }}
+          SCOOT_API_URL: ${{ vars.SCOOT_API_URL || 'https://scoot-api-production.up.railway.app' }}
         shell: bash
         run: |
           auth_flags=(--dart-define=SCOOT_AUTH_ENABLED=false)

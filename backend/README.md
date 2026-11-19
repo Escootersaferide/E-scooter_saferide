@@ -28,7 +28,7 @@ python3 backend/server.py --host 127.0.0.1 --port 8000 --db backend/scoot.db
 1. Создайте на Railway сервис из ветки `kir`. Файл `railway.toml` задаёт сборку контейнера и проверку `/api/health`.
 2. Подключите к сервису постоянный том с путём монтирования `/data`. База `/data/scoot.db` должна находиться на этом томе, чтобы сохранять учётные записи между развёртываниями.
 3. Создайте публичный HTTPS-домен сервиса. Проверьте, что запрос к `/api/health` возвращает `{"status":"ok"}`.
-4. Добавьте базовый HTTPS-адрес API без суффикса `/api` в переменную репозитория `SCOOT_API_URL` в **Settings → Secrets and variables → Actions → Variables**. При следующем push в `kir` GitHub Pages пересоберёт Flutter с этим адресом. Пока переменная пуста, сайт работает в гостевом режиме.
+4. Сборка GitHub Pages использует `https://scoot-api-production.up.railway.app`. Чтобы подключить другой API, задайте его базовый HTTPS-адрес без суффикса `/api` в переменной репозитория `SCOOT_API_URL` в **Settings → Secrets and variables → Actions → Variables**. При следующем push в `kir` GitHub Pages пересоберёт Flutter с этим адресом.
 
 Контейнер разрешает браузерные запросы с `https://escootersaferide.github.io`. При смене домена сайта укажите новый origin в `SCOOT_CORS_ORIGIN`.
 
