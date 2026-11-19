@@ -52,10 +52,11 @@ class ScootScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final canPop = ModalRoute.of(context)?.canPop == true;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        leading: ModalRoute.of(context)?.canPop == true
+        leading: canPop
             ? IconButton(
                 onPressed: () => Navigator.maybePop(context),
                 tooltip: 'Назад',
@@ -63,13 +64,28 @@ class ScootScaffold extends StatelessWidget {
               )
             : null,
         centerTitle: false,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.bolt_rounded, color: theme.colorScheme.primary),
-            const SizedBox(width: 4),
-            const Text('Scoot'),
-          ],
+        title: Tooltip(
+          message: 'На главную',
+          child: Semantics(
+            button: true,
+            label: 'На главную',
+            child: InkWell(
+              key: const ValueKey('scoot_home_logo'),
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => Navigator.of(context).popUntil((route) => route.isFirst),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bolt_rounded, color: theme.colorScheme.primary),
+                    const SizedBox(width: 4),
+                    const Text('Scoot'),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
         actions: actions,
       ),

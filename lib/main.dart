@@ -6,6 +6,7 @@ import 'auth_service.dart';
 import 'complex_check.dart';
 import 'feeling.dart';
 import 'scoot_ui.dart';
+import 'session_storage.dart';
 import 'traffic_questions.dart';
 
 void main() {
@@ -13,9 +14,10 @@ void main() {
 }
 
 class ScootApp extends StatefulWidget {
-  const ScootApp({super.key, this.authService});
+  const ScootApp({super.key, this.authService, this.sessionStorage});
 
   final AuthService? authService;
+  final SessionStorage? sessionStorage;
 
   @override
   State<ScootApp> createState() => _ScootAppState();
@@ -23,8 +25,16 @@ class ScootApp extends StatefulWidget {
 
 class _ScootAppState extends State<ScootApp> {
   late final AuthService _authService = widget.authService ?? AuthService();
+  late final SessionStorage _sessionStorage =
+      widget.sessionStorage ?? createSessionStorage();
   ThemeMode _themeMode = ThemeMode.system;
   AuthSession? _session;
+
+  @override
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
 
   @override
   void dispose() {
@@ -34,9 +44,34 @@ class _ScootAppState extends State<ScootApp> {
     super.dispose();
   }
 
+  Future<void> _restoreSession() async {
+    final saved = await _sessionStorage.load();
+    if (saved == null || !mounted) return;
+    setState(() => _session = saved);
+    try {
+      final freshUser = await _authService.fetchCurrentUser(saved.token);
+      if (!mounted || _session?.token != saved.token) return;
+      final refreshed = AuthSession(token: saved.token, user: freshUser);
+      setState(() => _session = refreshed);
+      await _sessionStorage.save(refreshed);
+    } on AuthException catch (error) {
+      if (error.statusCode == 401) {
+        if (!mounted || _session?.token != saved.token) return;
+        setState(() => _session = null);
+        await _sessionStorage.clear();
+      }
+    }
+  }
+
+  Future<void> _saveSession(AuthSession session) async {
+    setState(() => _session = session);
+    await _sessionStorage.save(session);
+  }
+
   Future<void> _logout() async {
     final token = _session?.token;
     setState(() => _session = null);
+    await _sessionStorage.clear();
     if (token != null) {
       try {
         await _authService.logout(token);
@@ -58,7 +93,7 @@ class _ScootAppState extends State<ScootApp> {
         onThemeChanged: (mode) => setState(() => _themeMode = mode),
         authService: _authService,
         session: _session,
-        onSessionChanged: (session) => setState(() => _session = session),
+        onSessionChanged: _saveSession,
         onLogout: _logout,
       ),
     );

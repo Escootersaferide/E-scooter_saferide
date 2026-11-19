@@ -74,6 +74,13 @@ class AuthUser {
   final String email;
   final String phone;
   final String createdAt;
+
+  Map<String, Object?> toJson() => {
+    'id': id,
+    'email': email,
+    'phone': phone,
+    'created_at': createdAt,
+  };
 }
 
 class AuthSession {
@@ -88,6 +95,8 @@ class AuthSession {
 
   final String token;
   final AuthUser user;
+
+  Map<String, Object?> toJson() => {'token': token, 'user': user.toJson()};
 }
 
 class AuthException implements Exception {
