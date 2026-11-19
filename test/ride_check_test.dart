@@ -42,6 +42,14 @@ Future<List<TrafficQuestion>> answerTraffic(
   return shown;
 }
 
+Future<void> showResult(WidgetTester tester) async {
+  expect(find.text('Шаг 3 из 3'), findsOneWidget);
+  expect(find.text('Рекомендации для вас'), findsOneWidget);
+  expect(find.textContaining('ПДД · '), findsNothing);
+  await tapAndSettle(tester, find.text('Понятно'));
+  expect(find.text('Шаг 3 из 3'), findsNothing);
+}
+
 void main() {
   test('The question bank has 100 distinct questions with valid options', () {
     expect(trafficQuestions, hasLength(100));
@@ -74,6 +82,8 @@ void main() {
     await tester.pumpWidget(const ScootApp());
     await openCheck(tester);
 
+    expect(find.text('Шаг 1 из 3'), findsOneWidget);
+    expect(find.text('Проверка самочувствия'), findsOneWidget);
     final continueButton = find.byType(FilledButton);
     expect(tester.widget<FilledButton>(continueButton).onPressed, isNull);
     await tester.drag(
@@ -111,6 +121,8 @@ void main() {
     for (var i = 0; i < 4; i++) {
       await answer(tester, 0);
     }
+    expect(find.text('Шаг 2 из 3'), findsOneWidget);
+    expect(find.text('Тест по ПДД'), findsOneWidget);
     expect(find.text('Вопрос 1 из 10'), findsOneWidget);
     expect(
       Theme.of(tester.element(find.byType(FilledButton))).brightness,
@@ -118,7 +130,10 @@ void main() {
     );
 
     final shown = await answerTraffic(tester, mistakes: {0, 3});
-    expect(find.text('Проверка пройдена'), findsOneWidget);
+    expect(find.textContaining('Уступайте пешеходам'), findsOneWidget);
+    await showResult(tester);
+    expect(find.text('Отлично!'), findsOneWidget);
+    expect(find.byIcon(Icons.emoji_events_rounded), findsWidgets);
     expect(find.text('ПДД · 8 из 10'), findsOneWidget);
 
     await tapAndSettle(tester, find.text('Разбор ошибок'));
@@ -147,8 +162,6 @@ void main() {
     }
     await answerTraffic(tester);
 
-    expect(find.text('Отложите поездку'), findsOneWidget);
-    expect(find.text('ПДД · 10 из 10'), findsOneWidget);
     expect(
       find.textContaining('недавнее употребление алкоголя'),
       findsOneWidget,
@@ -156,7 +169,10 @@ void main() {
     expect(find.textContaining('пройдёт усталость'), findsOneWidget);
     expect(find.textContaining('влияние препарата'), findsOneWidget);
     expect(find.textContaining('удерживать внимание'), findsOneWidget);
-    expect(find.text('Проверка пройдена'), findsNothing);
+    await showResult(tester);
+    expect(find.text('Отложите поездку'), findsOneWidget);
+    expect(find.text('ПДД · 10 из 10'), findsOneWidget);
+    expect(find.byIcon(Icons.emoji_events_rounded), findsNothing);
 
     await tapAndSettle(tester, find.text('На главный экран'));
     expect(find.text('Добро пожаловать в Scoot!'), findsOneWidget);
@@ -172,15 +188,22 @@ void main() {
       await answer(tester, 0);
     }
     final shown = await answerTraffic(tester, mistakes: {0, 1, 9});
+    expect(find.textContaining('разберите ошибки по ПДД'), findsOneWidget);
+    await showResult(tester);
     expect(find.text('Повторите ПДД'), findsOneWidget);
     expect(find.text('ПДД · 7 из 10'), findsOneWidget);
 
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
+    expect(find.text('Шаг 3 из 3'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
     expect(find.text('Вопрос 10 из 10'), findsOneWidget);
     expect(shownTrafficQuestion(), same(shown.last));
     await answer(tester, shown.last.correctOption);
-    expect(find.text('Проверка пройдена'), findsOneWidget);
+    expect(find.textContaining('разберите ошибки по ПДД'), findsNothing);
+    await showResult(tester);
+    expect(find.text('Отлично!'), findsOneWidget);
     expect(find.text('ПДД · 8 из 10'), findsOneWidget);
 
     await tapAndSettle(tester, find.text('Пройти заново'));
@@ -196,6 +219,7 @@ void main() {
     }
     final nextAttempt = await answerTraffic(tester);
     expect(nextAttempt.toSet(), isNot(equals(shown.toSet())));
+    await showResult(tester);
     expect(find.text('ПДД · 10 из 10'), findsOneWidget);
   });
 }

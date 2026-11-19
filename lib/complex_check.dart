@@ -33,8 +33,8 @@ class ComprehensiveCheckPage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Сначала ответьте на вопросы о самочувствии, затем пройдите '
-              'тест по правилам для электросамокатов.',
+              'Оцените самочувствие, пройдите тест по правилам для '
+              'электросамокатов и посмотрите рекомендации перед поездкой.',
               style: theme.textTheme.bodyLarge,
             ),
             const SizedBox(height: 12),
