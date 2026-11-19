@@ -1,4 +1,4 @@
-"""HTTP REST API server for Scoot user registration and authentication."""
+"""HTTP API for saferide accounts and ride assessments."""
 
 from __future__ import annotations
 
@@ -11,15 +11,17 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-try:
-    from .database import AuthError, UnauthorizedError, UserDatabase, ValidationError
-except ImportError:
-    from database import AuthError, UnauthorizedError, UserDatabase, ValidationError
+if __package__:
+    from .assessments import RideAssessments
+    from .database import DEFAULT_DB_PATH, AuthError, UnauthorizedError, UserDatabase, ValidationError
+else:
+    from assessments import RideAssessments
+    from database import DEFAULT_DB_PATH, AuthError, UnauthorizedError, UserDatabase, ValidationError
 
 MAX_BODY_BYTES = 16 * 1024
 
 
-class ScootHTTPServer(ThreadingHTTPServer):
+class SaferideHTTPServer(ThreadingHTTPServer):
     """ThreadingHTTPServer bound to a UserDatabase instance."""
 
     allow_reuse_address = True
@@ -32,16 +34,17 @@ class ScootHTTPServer(ThreadingHTTPServer):
         cors_origin: str = "*",
     ) -> None:
         self.db = db
+        self.assessments = RideAssessments(db)
         self.cors_origin = cors_origin
         super().__init__(server_address, AuthRequestHandler)
 
 
 class AuthRequestHandler(BaseHTTPRequestHandler):
-    server: ScootHTTPServer
+    server: SaferideHTTPServer
     timeout = 15
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
-        if os.environ.get("SCOOT_QUIET_LOGS") == "1":
+        if _setting("QUIET_LOGS", "") == "1":
             return
         super().log_message(format, *args)
 
@@ -59,6 +62,10 @@ class AuthRequestHandler(BaseHTTPRequestHandler):
             if path == "/api/auth/me":
                 user = self._require_user()
                 self._send_json(HTTPStatus.OK, {"user": user.to_dict()})
+                return
+            if path == "/api/rides":
+                user = self._require_user()
+                self._send_json(HTTPStatus.OK, self.server.assessments.overview(user.id))
                 return
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Маршрут не найден."})
         except AuthError as exc:
@@ -106,6 +113,22 @@ class AuthRequestHandler(BaseHTTPRequestHandler):
                     raise UnauthorizedError("Требуется авторизация.")
                 self.server.db.revoke_session(token)
                 self._send_json(HTTPStatus.OK, {"ok": True})
+                return
+
+            if path == "/api/rides/start":
+                user = self._require_user()
+                payload = self._read_json_body()
+                attempt = self.server.assessments.start(user.id, payload.get("kind"))
+                self._send_json(HTTPStatus.OK, attempt)
+                return
+
+            if path == "/api/rides/submit":
+                user = self._require_user()
+                payload = self._read_json_body()
+                result = self.server.assessments.submit(
+                    user.id, payload.get("id"), payload.get("answers")
+                )
+                self._send_json(HTTPStatus.OK, result)
                 return
 
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "Маршрут не найден."})
@@ -167,6 +190,10 @@ class AuthRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
 
+def _setting(name: str, default: str) -> str:
+    return os.environ.get(f"SAFERIDE_{name}", os.environ.get(f"SCOOT_{name}", default))
+
+
 def create_server(
     *,
     host: str = "127.0.0.1",
@@ -174,42 +201,42 @@ def create_server(
     db_path: str | Path | None = None,
     cors_origin: str = "*",
     pbkdf2_iterations: int | None = None,
-) -> ScootHTTPServer:
+) -> SaferideHTTPServer:
     resolved_db = (
         Path(db_path)
         if db_path is not None
-        else Path(os.environ.get("SCOOT_DB_PATH", Path(__file__).with_name("scoot.db")))
+        else Path(_setting("DB_PATH", str(DEFAULT_DB_PATH)))
     )
     db_kwargs: dict[str, Any] = {}
     if pbkdf2_iterations is not None:
         db_kwargs["pbkdf2_iterations"] = pbkdf2_iterations
     db = UserDatabase(resolved_db, **db_kwargs)
-    return ScootHTTPServer((host, port), db, cors_origin=cors_origin)
+    return SaferideHTTPServer((host, port), db, cors_origin=cors_origin)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run Scoot SQLite authentication API server.",
+        description="Run the saferide API.",
     )
     parser.add_argument(
         "--host",
-        default=os.environ.get("SCOOT_HOST", "127.0.0.1"),
+        default=_setting("HOST", "127.0.0.1"),
         help="Host address to bind (default: 127.0.0.1)",
     )
     parser.add_argument(
         "--port",
         type=int,
-        default=os.environ.get("SCOOT_PORT", os.environ.get("PORT", "8000")),
-        help="Port to listen on (default: SCOOT_PORT, PORT, or 8000)",
+        default=_setting("PORT", os.environ.get("PORT", "8000")),
+        help="Port to listen on (default: SAFERIDE_PORT, PORT, or 8000)",
     )
     parser.add_argument(
         "--db",
-        default=os.environ.get("SCOOT_DB_PATH", str(Path(__file__).with_name("scoot.db"))),
-        help="Path to SQLite database file (default: backend/scoot.db)",
+        default=_setting("DB_PATH", str(DEFAULT_DB_PATH)),
+        help="Path to SQLite database file",
     )
     parser.add_argument(
         "--cors-origin",
-        default=os.environ.get("SCOOT_CORS_ORIGIN", "*"),
+        default=_setting("CORS_ORIGIN", "*"),
         help="Allowed browser origin (default: *)",
     )
     args = parser.parse_args()
@@ -220,7 +247,7 @@ def main() -> None:
         db_path=args.db,
         cors_origin=args.cors_origin,
     )
-    print(f"Scoot Auth API listening on http://{args.host}:{args.port} (DB: {args.db})")
+    print(f"saferide API listening on http://{args.host}:{args.port} (DB: {args.db})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

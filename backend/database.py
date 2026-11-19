@@ -13,6 +13,10 @@ import sqlite3
 from typing import Optional
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
+LEGACY_DB_PATH = Path(__file__).with_name("scoot.db")
+DEFAULT_DB_PATH = (
+    LEGACY_DB_PATH if LEGACY_DB_PATH.exists() else Path(__file__).with_name("saferide.db")
+)
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _PHONE_ALLOWED_RE = re.compile(r"^[+\d\s()\-]+$")
@@ -153,7 +157,7 @@ class UserDatabase:
 
     def __init__(
         self,
-        db_path: str | Path = Path(__file__).with_name("scoot.db"),
+        db_path: str | Path = DEFAULT_DB_PATH,
         *,
         pbkdf2_iterations: int = PBKDF2_ITERATIONS,
     ) -> None:
@@ -161,7 +165,7 @@ class UserDatabase:
         self.pbkdf2_iterations = pbkdf2_iterations
         self._init_db()
 
-    def _connect(self) -> sqlite3.Connection:
+    def connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -170,7 +174,7 @@ class UserDatabase:
 
     def _init_db(self) -> None:
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
-        with self._connect() as conn:
+        with self.connect() as conn:
             conn.execute("PRAGMA journal_mode = WAL;")
             conn.executescript(schema)
 
@@ -183,7 +187,7 @@ class UserDatabase:
             iterations=self.pbkdf2_iterations,
         )
 
-        with self._connect() as conn:
+        with self.connect() as conn:
             existing_email = conn.execute(
                 "SELECT id FROM users WHERE email = ?",
                 (normalized_email,),
@@ -240,7 +244,7 @@ class UserDatabase:
             lookup_column = "phone"
             lookup_value = normalize_phone(raw)
 
-        with self._connect() as conn:
+        with self.connect() as conn:
             row = conn.execute(
                 f"SELECT id, email, phone, password_hash, created_at "
                 f"FROM users WHERE {lookup_column} = ?",
@@ -253,7 +257,7 @@ class UserDatabase:
         return self._row_to_user(row)
 
     def get_user_by_id(self, user_id: int) -> Optional[User]:
-        with self._connect() as conn:
+        with self.connect() as conn:
             row = conn.execute(
                 "SELECT id, email, phone, created_at FROM users WHERE id = ?",
                 (user_id,),
@@ -268,7 +272,7 @@ class UserDatabase:
     ) -> str:
         token = secrets.token_urlsafe(32)
         expires_at = _format_utc(_utc_now() + timedelta(days=ttl_days))
-        with self._connect() as conn:
+        with self.connect() as conn:
             conn.execute(
                 """
                 INSERT INTO sessions (token_hash, user_id, expires_at)
@@ -283,7 +287,7 @@ class UserDatabase:
             return None
         now = _format_utc(_utc_now())
         token_hash = _hash_token(token.strip())
-        with self._connect() as conn:
+        with self.connect() as conn:
             row = conn.execute(
                 """
                 SELECT u.id, u.email, u.phone, u.created_at, s.expires_at
@@ -306,7 +310,7 @@ class UserDatabase:
     def revoke_session(self, token: str) -> bool:
         if not isinstance(token, str) or not token.strip():
             return False
-        with self._connect() as conn:
+        with self.connect() as conn:
             cursor = conn.execute(
                 "DELETE FROM sessions WHERE token_hash = ?",
                 (_hash_token(token.strip()),),

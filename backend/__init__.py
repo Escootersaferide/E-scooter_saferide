@@ -1,1 +1,1 @@
-"""Scoot user database and authentication API."""
+"""saferide accounts and ride checks."""

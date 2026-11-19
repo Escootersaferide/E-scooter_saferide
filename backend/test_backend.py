@@ -1,4 +1,4 @@
-"""Unit and integration tests for Scoot SQLite user database and auth API."""
+"""Unit and integration tests for saferide SQLite user database and auth API."""
 
 from __future__ import annotations
 
@@ -23,6 +23,7 @@ from backend.database import (
     verify_password,
 )
 from backend.server import create_server
+from backend.assessments import COOLDOWN_SECONDS
 
 # Fast PBKDF2 count solely for test execution speed while testing the real algorithm.
 TEST_PBKDF2_ITERATIONS = 10_000
@@ -31,7 +32,7 @@ TEST_PBKDF2_ITERATIONS = 10_000
 class DatabaseTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmpdir = tempfile.TemporaryDirectory()
-        self.db_path = Path(self._tmpdir.name) / "test_scoot.db"
+        self.db_path = Path(self._tmpdir.name) / "test_saferide.db"
         self.db = UserDatabase(self.db_path, pbkdf2_iterations=TEST_PBKDF2_ITERATIONS)
 
     def tearDown(self) -> None:
@@ -59,11 +60,11 @@ class DatabaseTestCase(unittest.TestCase):
 
     def test_create_user_persists_and_prevents_duplicates(self) -> None:
         user = self.db.create_user(
-            email="Rider@Scoot.ru",
+            email="Rider@saferide.ru",
             phone="8 (999) 111-22-33",
             password="SafePassword1!",
         )
-        self.assertEqual(user.email, "rider@scoot.ru")
+        self.assertEqual(user.email, "rider@saferide.ru")
         self.assertEqual(user.phone, "+79991112233")
 
         with sqlite3.connect(self.db_path) as conn:
@@ -72,21 +73,21 @@ class DatabaseTestCase(unittest.TestCase):
                 (user.id,),
             ).fetchone()
         self.assertIsNotNone(row)
-        self.assertEqual(row[0], "rider@scoot.ru")
+        self.assertEqual(row[0], "rider@saferide.ru")
         self.assertEqual(row[1], "+79991112233")
         self.assertTrue(row[2].startswith("pbkdf2_sha256$"))
         self.assertNotIn("SafePassword1!", row[2])
 
         with self.assertRaises(ConflictError):
             self.db.create_user(
-                email="RIDER@SCOOT.RU",
+                email="RIDER@SAFERIDE.RU",
                 phone="+79990000000",
                 password="AnotherPassword1!",
             )
 
         with self.assertRaises(ConflictError):
             self.db.create_user(
-                email="other@scoot.ru",
+                email="other@saferide.ru",
                 phone="+7 999 111-22-33",
                 password="AnotherPassword1!",
             )
@@ -131,9 +132,9 @@ class DatabaseTestCase(unittest.TestCase):
 
 class AuthServerTestCase(unittest.TestCase):
     def setUp(self) -> None:
-        os.environ["SCOOT_QUIET_LOGS"] = "1"
+        os.environ["SAFERIDE_QUIET_LOGS"] = "1"
         self._tmpdir = tempfile.TemporaryDirectory()
-        self.db_path = Path(self._tmpdir.name) / "api_scoot.db"
+        self.db_path = Path(self._tmpdir.name) / "api_saferide.db"
         self.server = create_server(
             host="127.0.0.1",
             port=0,
@@ -187,12 +188,101 @@ class AuthServerTestCase(unittest.TestCase):
         self.assertEqual(status, 204)
         self.assertIn("Authorization", headers.get("Access-Control-Allow-Headers", ""))
 
+    def test_qualification_controls_orders_and_cooldown_survives_reopening_database(self):
+        def register(email, phone):
+            status, body, _ = self._request(
+                "POST", "/api/auth/register",
+                {"email": email, "phone": phone, "password": "TestPassword123"},
+            )
+            self.assertEqual(status, 201)
+            return body["token"]
+
+        token = register("rider@example.test", "+79999990001")
+        other_token = register("other@example.test", "+79999990002")
+        start = "/api/rides/start"
+        submit = "/api/rides/submit"
+
+        def answers_for(attempt):
+            with self.server.db.connect() as conn:
+                saved = conn.execute(
+                    "SELECT questions FROM ride_assessments WHERE id = ?",
+                    (attempt["id"],),
+                ).fetchone()[0]
+            return [
+                question["safe"][0] if question["category"] == "readiness"
+                else question["correct_option"]
+                for question in json.loads(saved)
+            ]
+
+        self.assertEqual(self._request("GET", "/api/rides")[0], 401)
+        self.assertEqual(self._request("POST", start, {"kind": "order"}, token)[0], 403)
+        status, qualification, _ = self._request(
+            "POST", start, {"kind": "qualification"}, token
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(qualification["questions"]), 24)
+        self.assertEqual(qualification["min_score"], 16)
+        self.assertTrue(all(
+            set(q) == {"category", "prompt", "options"} for q in qualification["questions"]
+        ))
+        answers = answers_for(qualification)
+        self.assertEqual(
+            self._request("POST", submit, {"id": qualification["id"], "answers": answers}, other_token)[0],
+            404,
+        )
+        self.assertEqual(
+            self._request("POST", submit, {"id": qualification["id"], "answers": [True, *answers[1:]]}, token)[0],
+            400,
+        )
+        status, result, _ = self._request(
+            "POST", submit, {"id": qualification["id"], "answers": answers}, token
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(result["passed"])
+        self.assertEqual(result["score"], 20)
+        self.assertEqual(self._request("POST", start, {"kind": "order"}, other_token)[0], 403)
+
+        _, order, _ = self._request("POST", start, {"kind": "order"}, token)
+        self.assertEqual(len(order["questions"]), 7)
+        self.assertEqual(self._request("POST", start, {"kind": "order"}, token)[1]["id"], order["id"])
+        answers = answers_for(order)
+        answers[0] = 1  # A flagged readiness answer overrides perfect knowledge.
+        _, failed, _ = self._request("POST", submit, {"id": order["id"], "answers": answers}, token)
+        self.assertFalse(failed["passed"])
+        self.assertFalse(failed["readiness_ok"])
+        self.assertEqual(failed["score"], 5)
+        self.assertEqual(self._request("POST", submit, {"id": order["id"], "answers": []}, token)[1], failed)
+        self.assertEqual(self._request("POST", start, {"kind": "order"}, token)[0], 429)
+
+        reopened = UserDatabase(self.db_path)
+        from backend.assessments import RideAssessments
+        overview = RideAssessments(reopened).overview(reopened.get_user_by_token(token).id)
+        self.assertIsNotNone(overview["qualified_at"])
+        self.assertIn(overview["retry_after_seconds"], range(COOLDOWN_SECONDS - 2, COOLDOWN_SECONDS + 1))
+        self.assertEqual(overview["history"], [failed])
+        with reopened.connect() as conn:
+            conn.execute(
+                "UPDATE ride_assessments SET completed_at = completed_at - ? WHERE id = ?",
+                (COOLDOWN_SECONDS, order["id"]),
+            )
+            self.assertIsNone(conn.execute(
+                "SELECT questions FROM ride_assessments WHERE id = ?", (order["id"],)
+            ).fetchone()[0])
+        _, next_order, _ = self._request("POST", start, {"kind": "order"}, token)
+        _, passed, _ = self._request(
+            "POST", submit, {"id": next_order["id"], "answers": answers_for(next_order)}, token
+        )
+        self.assertTrue(passed["passed"])
+        history = self._request("GET", "/api/rides", token=token)[1]["history"]
+        self.assertEqual([item["passed"] for item in history], [True, False])
+        self.assertEqual(self._request("GET", "/api/rides", token=other_token)[1]["history"], [])
+
     def test_register_me_logout_and_login_flow(self) -> None:
         status, body, _ = self._request(
             "POST",
             "/api/auth/register",
             {
-                "email": "dmitrii@scoot.ru",
+                "email": "dmitrii@saferide.ru",
                 "phone": "+7 (999) 888-77-66",
                 "password": "StrongPassword99",
             },
@@ -200,7 +290,7 @@ class AuthServerTestCase(unittest.TestCase):
         self.assertEqual(status, 201)
         token = body["token"]
         self.assertIsInstance(token, str)
-        self.assertEqual(body["user"]["email"], "dmitrii@scoot.ru")
+        self.assertEqual(body["user"]["email"], "dmitrii@saferide.ru")
         self.assertEqual(body["user"]["phone"], "+79998887766")
         self.assertNotIn("password_hash", body["user"])
 
@@ -209,7 +299,7 @@ class AuthServerTestCase(unittest.TestCase):
             "POST",
             "/api/auth/register",
             {
-                "email": "dmitrii@scoot.ru",
+                "email": "dmitrii@saferide.ru",
                 "phone": "+79990001122",
                 "password": "StrongPassword99",
             },
@@ -220,7 +310,7 @@ class AuthServerTestCase(unittest.TestCase):
         # Fetch current user with token
         me_status, me_body, _ = self._request("GET", "/api/auth/me", token=token)
         self.assertEqual(me_status, 200)
-        self.assertEqual(me_body["user"]["email"], "dmitrii@scoot.ru")
+        self.assertEqual(me_body["user"]["email"], "dmitrii@saferide.ru")
 
         # Logout invalidates token
         logout_status, _, _ = self._request("POST", "/api/auth/logout", {}, token=token)
@@ -236,14 +326,14 @@ class AuthServerTestCase(unittest.TestCase):
             {"identifier": "8 999 888 77 66", "password": "StrongPassword99"},
         )
         self.assertEqual(login_status, 200)
-        self.assertEqual(login_body["user"]["email"], "dmitrii@scoot.ru")
+        self.assertEqual(login_body["user"]["email"], "dmitrii@saferide.ru")
         self.assertTrue(login_body["token"])
 
         # Wrong password returns 401
         bad_status, _, _ = self._request(
             "POST",
             "/api/auth/login",
-            {"identifier": "dmitrii@scoot.ru", "password": "WrongPassword"},
+            {"identifier": "dmitrii@saferide.ru", "password": "WrongPassword"},
         )
         self.assertEqual(bad_status, 401)
 
