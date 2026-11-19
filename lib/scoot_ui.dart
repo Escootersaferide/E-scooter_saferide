@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
+const scootDarkCardColor = Color(0xFF20332F);
+
 ThemeData scootTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final colors = ColorScheme.fromSeed(
@@ -12,7 +14,7 @@ ThemeData scootTheme(Brightness brightness) {
         ? const Color(0xFFDCF7EF)
         : const Color(0xFF163A33),
     surface: dark ? const Color(0xFF142423) : const Color(0xFFF3F6F5),
-    surfaceContainerLow: dark ? const Color(0xFF20332F) : Colors.white,
+    surfaceContainerLow: dark ? scootDarkCardColor : Colors.white,
   );
 
   return ThemeData(
