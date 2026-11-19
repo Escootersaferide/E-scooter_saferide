@@ -51,11 +51,15 @@ QUALIFICATION_READINESS = [
 ]
 ORDER_READINESS = [
     FEELING,
-    readiness(
-        "Может ли алкоголь, лекарство или другое вещество сейчас ухудшать вашу реакцию?",
-        ["Нет", "Да или не уверен(а)"],
-        [0],
-    ),
+    {
+        **readiness(
+            "Употребляли ли вы недавно алкоголь или принимали лекарства либо другие "
+            "вещества, которые могут ухудшить реакцию?",
+            ["Нет", "Да или не уверен(а)"],
+            [0],
+        ),
+        "previous_prompt": "Может ли алкоголь, лекарство или другое вещество сейчас ухудшать вашу реакцию?",
+    },
 ]
 ORDER_GENERAL = [
     {
@@ -119,6 +123,12 @@ class RideAssessments:
     def __init__(self, db: UserDatabase) -> None:
         self.db = db
         self.traffic = json.loads(TRAFFIC_BANK_PATH.read_text(encoding="utf-8"))
+        # These wording revisions keep answer positions compatible with saved attempts.
+        self._revised_questions = {
+            question["previous_prompt"]: question
+            for question in [*self.traffic, *ORDER_READINESS]
+            if "previous_prompt" in question
+        }
 
     def overview(self, user_id: int) -> dict:
         with closing(self.db.connect()) as conn:
@@ -173,13 +183,19 @@ class RideAssessments:
             else:
                 attempt_id = pending["id"]
                 questions = json.loads(pending["questions"])
+
+            visible_questions = []
+            for question in questions:
+                current = self._revised_questions.get(question["prompt"], question)
+                visible_questions.append({
+                    "category": question["category"],
+                    "prompt": current["prompt"],
+                    "options": current["options"],
+                })
             return {
                 "id": attempt_id,
                 "min_score": PASS_SCORES[kind],
-                "questions": [
-                    {key: question[key] for key in ("category", "prompt", "options")}
-                    for question in questions
-                ],
+                "questions": visible_questions,
             }
 
     def submit(self, user_id: int, attempt_id: object, answers: object) -> dict:

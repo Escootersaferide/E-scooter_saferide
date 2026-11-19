@@ -244,7 +244,47 @@ class AuthServerTestCase(unittest.TestCase):
 
         _, order, _ = self._request("POST", start, {"kind": "order"}, token)
         self.assertEqual(len(order["questions"]), 7)
-        self.assertEqual(self._request("POST", start, {"kind": "order"}, token)[1]["id"], order["id"])
+        substance_prompt = (
+            "Употребляли ли вы недавно алкоголь или принимали лекарства либо другие "
+            "вещества, которые могут ухудшить реакцию?"
+        )
+        self.assertEqual(order["questions"][1]["prompt"], substance_prompt)
+
+        # Exercise an attempt that was opened before the wording changed.
+        old_handlebar_prompt = "Как нужно держать руль электросамоката во время движения?"
+        handlebar = next(
+            question for question in self.server.assessments.traffic
+            if question.get("previous_prompt") == old_handlebar_prompt
+        )
+        self.assertEqual(handlebar["options"][handlebar["correct_option"]], "Держать руль двумя руками")
+        with self.server.db.connect() as conn:
+            saved = conn.execute(
+                "SELECT questions FROM ride_assessments WHERE id = ?", (order["id"],)
+            ).fetchone()[0]
+            questions = json.loads(saved)
+            questions[1]["prompt"] = (
+                "Может ли алкоголь, лекарство или другое вещество сейчас ухудшать вашу реакцию?"
+            )
+            questions[2] = {
+                "category": "traffic",
+                "prompt": old_handlebar_prompt,
+                "options": [
+                    "Можно отпустить руль при движении по прямой",
+                    "Держаться за руль достаточно только при повороте",
+                    "Нужно держаться за руль как минимум одной рукой",
+                ],
+                "correct_option": 2,
+            }
+            conn.execute(
+                "UPDATE ride_assessments SET questions = ? WHERE id = ?",
+                (json.dumps(questions, ensure_ascii=False), order["id"]),
+            )
+
+        _, resumed, _ = self._request("POST", start, {"kind": "order"}, token)
+        self.assertEqual(resumed["id"], order["id"])
+        self.assertEqual(resumed["questions"][1]["prompt"], substance_prompt)
+        self.assertEqual(resumed["questions"][2]["prompt"], handlebar["prompt"])
+        self.assertEqual(resumed["questions"][2]["options"][2], "Держать руль двумя руками")
         answers = answers_for(order)
         answers[0] = 1  # A flagged readiness answer overrides perfect knowledge.
         _, failed, _ = self._request("POST", submit, {"id": order["id"], "answers": answers}, token)
