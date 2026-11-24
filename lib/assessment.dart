@@ -1,3 +1,4 @@
+import 'feeling.dart';
 import 'traffic_questions.dart';
 
 enum AssessmentKind {
@@ -12,7 +13,14 @@ enum AssessmentKind {
 class AssessmentQuestion {
   AssessmentQuestion.fromJson(Map<String, dynamic> json)
     : category = json['category'] as String,
-      prompt = json['prompt'] as String,
+      prompt = switch (json) {
+        {
+          'category': 'readiness',
+          'prompt': 'Может ли недавно употреблённый алкоголь сейчас влиять на вашу реакцию?',
+        } =>
+          recentAlcoholPrompt,
+        _ => json['prompt'] as String,
+      },
       options = List<String>.from(json['options'] as List),
       illustration = QuestionIllustration.fromJson(json['illustration']);
 

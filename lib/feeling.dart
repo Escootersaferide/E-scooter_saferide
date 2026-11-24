@@ -12,6 +12,8 @@ class ReadinessQuestion {
   final List<ReadinessOption> options;
 }
 
+const recentAlcoholPrompt = 'Употребляли ли вы недавно алкоголь?';
+
 const readinessQuestions = [
   ReadinessQuestion('Как вы себя чувствуете?', [
     ReadinessOption('Отлично'),
@@ -25,7 +27,7 @@ const readinessQuestions = [
       advice: 'При плохом самочувствии выберите другой способ добраться.',
     ),
   ]),
-  ReadinessQuestion('Употребляли ли вы недавно алкоголь?', [
+  ReadinessQuestion(recentAlcoholPrompt, [
     ReadinessOption('Нет'),
     ReadinessOption(
       'Да',

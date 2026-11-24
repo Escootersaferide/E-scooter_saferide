@@ -336,6 +336,7 @@ void main() {
       (AssessmentKind.qualification, 420, '07:00'),
       (AssessmentKind.order, 120, '02:00'),
       (AssessmentKind.order, 42, '00:42'),
+      (AssessmentKind.qualification, null, '07:00'),
     ]) {
       var now = DateTime.utc(2026, 11, 24);
       await tester.pumpWidget(
@@ -352,7 +353,9 @@ void main() {
               'questions': [
                 {
                   'category': 'readiness',
-                  'prompt': 'Употребляли ли вы недавно алкоголь?',
+                  'prompt': remaining == null
+                      ? 'Может ли недавно употреблённый алкоголь сейчас влиять на вашу реакцию?'
+                      : 'Употребляли ли вы недавно алкоголь?',
                   'options': ['Нет', 'Да или не уверен(а)'],
                 },
               ],
@@ -362,11 +365,12 @@ void main() {
         ),
       );
       expect(find.text(display), findsOneWidget);
+      expect(find.text('Употребляли ли вы недавно алкоголь?'), findsOneWidget);
       await tester.tap(find.text('Нет'));
       await tester.pump();
       expect(find.text('Завершить тест'), findsOneWidget);
 
-      now = now.add(Duration(seconds: remaining));
+      now = now.add(Duration(seconds: remaining ?? 420));
       await tester.pump(const Duration(milliseconds: 250));
       expect(find.text('Время вышло'), findsOneWidget);
       expect(find.text('Завершить тест'), findsNothing);

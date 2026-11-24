@@ -5,6 +5,7 @@ import 'assessment_timer.dart';
 import 'auth_service.dart';
 import 'question_card.dart';
 import 'saferide_ui.dart';
+import 'traffic_questions.dart';
 
 class AssessmentPage extends StatefulWidget {
   const AssessmentPage({
@@ -32,6 +33,15 @@ class _AssessmentPageState extends State<AssessmentPage> {
     widget.attempt.questions.length,
     null,
   );
+  // Older servers omit remaining time and illustrations from the attempt.
+  late final _bundledIllustrations = widget.attempt.remainingTime == null
+      ? loadTrafficQuestions().then(
+          (bank) => {
+            for (final question in bank)
+              question.prompt: ?question.illustration,
+          },
+        )
+      : null;
   int _index = 0;
   bool _submitting = false;
   String? _error;
@@ -188,27 +198,31 @@ class _AssessmentPageState extends State<AssessmentPage> {
           const SizedBox(height: 10),
           LinearProgressIndicator(value: (_index + 1) / _answers.length),
           const SizedBox(height: 14),
-          QuestionCard(
-            section: question.section,
-            number: _index + 1,
-            count: _answers.length,
-            prompt: question.prompt,
-            illustration: question.illustration,
-            options: question.options,
-            selected: _answers[_index],
-            onSelect: (answer) {
-              if (_index == index && !_submitting && !_timer.expired) {
-                setState(() => _answers[index] = answer);
-              }
-            },
-            nextLabel: _submitting
-                ? 'Проверяем ответы…'
-                : isLast
-                ? 'Завершить тест'
-                : 'Продолжить',
-            onNext: _answers[_index] == null || _submitting
-                ? null
-                : () => _next(index),
+          FutureBuilder(
+            future: _bundledIllustrations,
+            builder: (context, snapshot) => QuestionCard(
+              section: question.section,
+              number: index + 1,
+              count: _answers.length,
+              prompt: question.prompt,
+              illustration:
+                  question.illustration ?? snapshot.data?[question.prompt],
+              options: question.options,
+              selected: _answers[index],
+              onSelect: (answer) {
+                if (_index == index && !_submitting && !_timer.expired) {
+                  setState(() => _answers[index] = answer);
+                }
+              },
+              nextLabel: _submitting
+                  ? 'Проверяем ответы…'
+                  : isLast
+                  ? 'Завершить тест'
+                  : 'Продолжить',
+              onNext: _answers[index] == null || _submitting
+                  ? null
+                  : () => _next(index),
+            ),
           ),
           if (_error case final String error)
             Padding(
