@@ -1,6 +1,8 @@
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'saferide_ui.dart';
+import 'traffic_questions.dart';
 
 class QuestionCard extends StatelessWidget {
   const QuestionCard({
@@ -9,6 +11,7 @@ class QuestionCard extends StatelessWidget {
     required this.number,
     required this.count,
     required this.prompt,
+    this.illustration,
     required this.options,
     required this.selected,
     required this.onSelect,
@@ -20,6 +23,7 @@ class QuestionCard extends StatelessWidget {
   final int number;
   final int count;
   final String prompt;
+  final QuestionIllustration? illustration;
   final List<String> options;
   final int? selected;
   final ValueChanged<int?> onSelect;
@@ -66,6 +70,18 @@ class QuestionCard extends StatelessWidget {
               ),
             ),
           ),
+          if (illustration case final image?) ...[
+            const SizedBox(height: 16),
+            Center(
+              child: SvgPicture.asset(
+                image.asset,
+                width: 136,
+                height: 86,
+                semanticsLabel: image.alt,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           RadioGroup<int>(
             groupValue: selected,

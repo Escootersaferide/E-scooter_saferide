@@ -167,9 +167,10 @@ class _RideDashboardState extends State<RideDashboard> {
                 child: const Text('Обновить'),
               ),
             ] else if (!qualified) ...[
-              const Text(
+              Text(
                 'Чтобы открыть меню поездок, ответьте на 4 вопроса о самочувствии '
-                'и наберите минимум 16 из 20 по ПДД.',
+                'и наберите минимум 16 из 20 по ПДД. '
+                'На тест отводится ${AssessmentKind.qualification.timeLimit.inMinutes} минут.',
               ),
               const SizedBox(height: 20),
               FilledButton(
@@ -181,7 +182,10 @@ class _RideDashboardState extends State<RideDashboard> {
                 ),
               ),
             ] else ...[
-              const Text('Перед каждой поездкой пройдите короткий тест.'),
+              Text(
+                'Перед каждой поездкой пройдите короткий тест. '
+                'На него отводится ${AssessmentKind.order.timeLimit.inMinutes} минуты.',
+              ),
               if (remaining > 0) ...[
                 const SizedBox(height: 12),
                 Text(

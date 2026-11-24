@@ -1,14 +1,25 @@
-enum AssessmentKind { qualification, order }
+import 'traffic_questions.dart';
+
+enum AssessmentKind {
+  qualification(Duration(minutes: 7)),
+  order(Duration(minutes: 2));
+
+  const AssessmentKind(this.timeLimit);
+
+  final Duration timeLimit;
+}
 
 class AssessmentQuestion {
   AssessmentQuestion.fromJson(Map<String, dynamic> json)
     : category = json['category'] as String,
       prompt = json['prompt'] as String,
-      options = List<String>.from(json['options'] as List);
+      options = List<String>.from(json['options'] as List),
+      illustration = QuestionIllustration.fromJson(json['illustration']);
 
   final String category;
   final String prompt;
   final List<String> options;
+  final QuestionIllustration? illustration;
 
   String get section => switch (category) {
     'readiness' => 'Самочувствие',
@@ -21,6 +32,10 @@ class AssessmentAttempt {
   AssessmentAttempt.fromJson(Map<String, dynamic> json)
     : id = json['id'] as String,
       minScore = json['min_score'] as int,
+      remainingTime = switch (json['remaining_seconds']) {
+        final int seconds => Duration(seconds: seconds),
+        _ => null,
+      },
       questions = [
         for (final question in json['questions'] as List)
           AssessmentQuestion.fromJson(question as Map<String, dynamic>),
@@ -28,6 +43,7 @@ class AssessmentAttempt {
 
   final String id;
   final int minScore;
+  final Duration? remainingTime;
   final List<AssessmentQuestion> questions;
 }
 

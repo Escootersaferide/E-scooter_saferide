@@ -181,7 +181,8 @@ class AuthServerTestCase(unittest.TestCase):
     def test_health_and_cors(self) -> None:
         status, body, headers = self._request("GET", "/api/health")
         self.assertEqual(status, 200)
-        self.assertEqual(body, {"status": "ok"})
+        self.assertEqual(body["status"], "ok")
+        self.assertEqual(body["traffic_question_count"], 150)
         self.assertEqual(headers.get("Access-Control-Allow-Origin"), "*")
 
         status, _, headers = self._request("OPTIONS", "/api/auth/register")
@@ -214,6 +215,21 @@ class AuthServerTestCase(unittest.TestCase):
                 for question in json.loads(saved)
             ]
 
+        def age_attempt(attempt, seconds):
+            with self.server.db.connect() as conn:
+                conn.execute(
+                    "UPDATE ride_assessments SET created_at = created_at - ? WHERE id = ?",
+                    (seconds, attempt["id"]),
+                )
+
+        def check_question_formats(attempt):
+            questions = attempt["questions"]
+            required_fields = {"category", "prompt", "options"}
+            for question in questions:
+                self.assertIn(set(question), (required_fields, required_fields | {"illustration"}))
+            traffic = [q for q in questions if q["category"] == "traffic"]
+            self.assertEqual({"illustration" in q for q in traffic}, {True, False})
+
         self.assertEqual(self._request("GET", "/api/rides")[0], 401)
         self.assertEqual(self._request("POST", start, {"kind": "order"}, token)[0], 403)
         status, qualification, _ = self._request(
@@ -222,9 +238,22 @@ class AuthServerTestCase(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(qualification["questions"]), 24)
         self.assertEqual(qualification["min_score"], 16)
-        self.assertTrue(all(
-            set(q) == {"category", "prompt", "options"} for q in qualification["questions"]
-        ))
+        self.assertEqual(qualification["remaining_seconds"], 420)
+        self.assertEqual(qualification["questions"][1]["prompt"], "Употребляли ли вы недавно алкоголь?")
+        check_question_formats(qualification)
+        age_attempt(qualification, 60)
+        _, resumed_qualification, _ = self._request("POST", start, {"kind": "qualification"}, token)
+        self.assertEqual(resumed_qualification["id"], qualification["id"])
+        self.assertEqual(resumed_qualification["questions"], qualification["questions"])
+        self.assertIn(resumed_qualification["remaining_seconds"], range(1, 361))
+        age_attempt(qualification, 360)
+        self.assertEqual(self._request(
+            "POST", submit, {"id": qualification["id"], "answers": answers_for(qualification)}, token,
+        )[0], 410)
+        _, fresh, _ = self._request("POST", start, {"kind": "qualification"}, token)
+        self.assertNotEqual(fresh["id"], qualification["id"])
+        self.assertEqual(fresh["remaining_seconds"], 420)
+        qualification = fresh
         answers = answers_for(qualification)
         self.assertEqual(
             self._request("POST", submit, {"id": qualification["id"], "answers": answers}, other_token)[0],
@@ -244,6 +273,8 @@ class AuthServerTestCase(unittest.TestCase):
 
         _, order, _ = self._request("POST", start, {"kind": "order"}, token)
         self.assertEqual(len(order["questions"]), 7)
+        self.assertEqual(order["remaining_seconds"], 120)
+        check_question_formats(order)
         substance_prompt = (
             "Употребляли ли вы недавно алкоголь или принимали лекарства либо другие "
             "вещества, которые могут ухудшить реакцию?"
@@ -308,7 +339,14 @@ class AuthServerTestCase(unittest.TestCase):
             self.assertIsNone(conn.execute(
                 "SELECT questions FROM ride_assessments WHERE id = ?", (order["id"],)
             ).fetchone()[0])
+        _, timed_out_order, _ = self._request("POST", start, {"kind": "order"}, token)
+        age_attempt(timed_out_order, 120)
+        self.assertEqual(self._request(
+            "POST", submit, {"id": timed_out_order["id"], "answers": answers_for(timed_out_order)}, token,
+        )[0], 410)
         _, next_order, _ = self._request("POST", start, {"kind": "order"}, token)
+        self.assertNotEqual(timed_out_order["id"], next_order["id"])
+        self.assertEqual(next_order["remaining_seconds"], 120)
         _, passed, _ = self._request(
             "POST", submit, {"id": next_order["id"], "answers": answers_for(next_order)}, token
         )

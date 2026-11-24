@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:saferide/assessment.dart';
+import 'package:saferide/assessment_page.dart';
 import 'package:saferide/auth_service.dart';
 import 'package:saferide/main.dart';
 import 'package:saferide/session_storage.dart';
@@ -319,6 +321,57 @@ void main() {
       expect(find.text('3 из 5'), findsOneWidget);
     },
   );
+
+  testWidgets('An assessment counts down from its remaining server time', (
+    tester,
+  ) async {
+    final service = AuthService(
+      client: MockClient(
+        (_) async => throw StateError('Unexpected submission'),
+      ),
+    );
+    addTearDown(service.close);
+
+    for (final (kind, remaining, display) in [
+      (AssessmentKind.qualification, 420, '07:00'),
+      (AssessmentKind.order, 120, '02:00'),
+      (AssessmentKind.order, 42, '00:42'),
+    ]) {
+      var now = DateTime.utc(2026, 11, 24);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AssessmentPage(
+            key: ValueKey(remaining),
+            service: service,
+            token: 'rider-token',
+            kind: kind,
+            attempt: AssessmentAttempt.fromJson({
+              'id': 'pending-test',
+              'min_score': 1,
+              'remaining_seconds': remaining,
+              'questions': [
+                {
+                  'category': 'readiness',
+                  'prompt': 'Употребляли ли вы недавно алкоголь?',
+                  'options': ['Нет', 'Да или не уверен(а)'],
+                },
+              ],
+            }),
+            now: () => now,
+          ),
+        ),
+      );
+      expect(find.text(display), findsOneWidget);
+      await tester.tap(find.text('Нет'));
+      await tester.pump();
+      expect(find.text('Завершить тест'), findsOneWidget);
+
+      now = now.add(Duration(seconds: remaining));
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.text('Время вышло'), findsOneWidget);
+      expect(find.text('Завершить тест'), findsNothing);
+    }
+  });
 
   testWidgets('Tapping the top-left Saferide logo returns to the home screen', (
     tester,

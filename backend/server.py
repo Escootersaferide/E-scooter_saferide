@@ -57,7 +57,10 @@ class AuthRequestHandler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path.rstrip("/") or "/"
         try:
             if path == "/api/health":
-                self._send_json(HTTPStatus.OK, {"status": "ok"})
+                self._send_json(HTTPStatus.OK, {
+                    "status": "ok",
+                    "traffic_question_count": len(self.server.assessments.traffic),
+                })
                 return
             if path == "/api/auth/me":
                 user = self._require_user()

@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'assessment.dart';
+import 'assessment_timer.dart';
 import 'auth_service.dart';
 import 'question_card.dart';
 import 'saferide_ui.dart';
@@ -12,18 +13,21 @@ class AssessmentPage extends StatefulWidget {
     required this.token,
     required this.kind,
     required this.attempt,
+    this.now = DateTime.now,
   });
 
   final AuthService service;
   final String token;
   final AssessmentKind kind;
   final AssessmentAttempt attempt;
+  final DateTime Function() now;
 
   @override
   State<AssessmentPage> createState() => _AssessmentPageState();
 }
 
 class _AssessmentPageState extends State<AssessmentPage> {
+  late final AssessmentTimer _timer;
   late final _answers = List<int?>.filled(
     widget.attempt.questions.length,
     null,
@@ -31,9 +35,37 @@ class _AssessmentPageState extends State<AssessmentPage> {
   int _index = 0;
   bool _submitting = false;
   String? _error;
+  String? _endedTitle;
   AssessmentResult? _result;
 
-  Future<void> _next() async {
+  @override
+  void initState() {
+    super.initState();
+    _timer = AssessmentTimer(
+      widget.attempt.remainingTime ?? widget.kind.timeLimit,
+      now: widget.now,
+    )..addListener(_updateTimer);
+  }
+
+  void _updateTimer() => setState(() {});
+
+  @override
+  void dispose() {
+    _timer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _next(int index) async {
+    if (_index != index ||
+        _answers[index] == null ||
+        _submitting ||
+        _endedTitle != null) {
+      return;
+    }
+    if (_timer.expired) {
+      _updateTimer();
+      return;
+    }
     if (_index + 1 < _answers.length) {
       setState(() => _index++);
       return;
@@ -49,9 +81,22 @@ class _AssessmentPageState extends State<AssessmentPage> {
         widget.attempt.id,
         _answers.cast<int>(),
       );
-      if (mounted) setState(() => _result = result);
+      if (mounted) {
+        _timer.pause();
+        setState(() => _result = result);
+      }
     } on AuthException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted) {
+        setState(() {
+          _error = error.message;
+          _endedTitle = switch (error.statusCode) {
+            410 => 'Время вышло',
+            404 => 'Попытка больше недоступна',
+            _ => null,
+          };
+          if (_endedTitle != null) _timer.pause();
+        });
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -116,10 +161,23 @@ class _AssessmentPageState extends State<AssessmentPage> {
       );
     }
 
+    if (!_submitting && (_endedTitle != null || _timer.expired)) {
+      return SaferideScaffold(
+        scrollKey: const ValueKey('assessment_ended'),
+        child: AssessmentEndedCard(
+          title: _endedTitle ?? 'Время вышло',
+          buttonLabel: isOrder ? 'К меню поездок' : 'На главную',
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      );
+    }
+
+    final index = _index;
     final question = widget.attempt.questions[_index];
     final isLast = _index + 1 == _answers.length;
     return SaferideScaffold(
       scrollKey: ValueKey(_index),
+      actions: [AssessmentTimerBadge(secondsLeft: _timer.secondsLeft)],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -135,17 +193,22 @@ class _AssessmentPageState extends State<AssessmentPage> {
             number: _index + 1,
             count: _answers.length,
             prompt: question.prompt,
+            illustration: question.illustration,
             options: question.options,
             selected: _answers[_index],
             onSelect: (answer) {
-              if (!_submitting) setState(() => _answers[_index] = answer);
+              if (_index == index && !_submitting && !_timer.expired) {
+                setState(() => _answers[index] = answer);
+              }
             },
             nextLabel: _submitting
                 ? 'Проверяем ответы…'
                 : isLast
                 ? 'Завершить тест'
                 : 'Продолжить',
-            onNext: _answers[_index] == null || _submitting ? null : _next,
+            onNext: _answers[_index] == null || _submitting
+                ? null
+                : () => _next(index),
           ),
           if (_error case final String error)
             Padding(

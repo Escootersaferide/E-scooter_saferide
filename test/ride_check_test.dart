@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:saferide/complex_check.dart';
@@ -61,8 +62,8 @@ Future<void> showResult(WidgetTester tester) async {
 }
 
 void main() {
-  test('The question bank has 100 distinct questions with valid options', () {
-    expect(trafficQuestions, hasLength(100));
+  test('The question bank has 150 distinct questions with valid options', () {
+    expect(trafficQuestions, hasLength(150));
     expect(
       trafficQuestions.map((question) => question.prompt).toSet(),
       hasLength(trafficQuestions.length),
@@ -74,6 +75,21 @@ void main() {
     }
   });
 
+  testWidgets('Illustrations can be loaded as bundled SVG assets', (
+    tester,
+  ) async {
+    final illustrated = trafficQuestions.where((q) => q.illustration != null);
+    expect(illustrated, hasLength(35));
+    final illustrations = {for (final q in illustrated) q.illustration!.asset};
+    for (final path in illustrations) {
+      final image = await tester.runAsync(
+        () => SvgAssetLoader(path).loadBytes(null),
+      );
+      expect(image?.lengthInBytes, greaterThan(0), reason: path);
+    }
+    expect(tester.takeException(), isNull);
+  });
+
   test('An attempt draws ten distinct questions in a random order', () {
     final random = Random(42);
     final first = drawTrafficQuestions(random, trafficQuestions);
@@ -81,6 +97,10 @@ void main() {
     expect(first, hasLength(trafficQuestionCount));
     expect(first.toSet(), hasLength(trafficQuestionCount));
     expect(second.toSet(), hasLength(trafficQuestionCount));
+    for (var seed = 0; seed < 50; seed++) {
+      final draw = drawTrafficQuestions(Random(seed), trafficQuestions);
+      expect(draw.map((q) => q.illustration != null).toSet(), {false, true});
+    }
     expect(first.toSet(), isNot(equals(second.toSet())));
     expect(first, isNot(equals(trafficQuestions.take(trafficQuestionCount))));
     expect(

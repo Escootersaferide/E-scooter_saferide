@@ -20,6 +20,7 @@ else:
 TRAFFIC_BANK_PATH = Path(__file__).resolve().parents[1] / "assets/questions/traffic.json"
 COOLDOWN_SECONDS = 5 * 60
 PASS_SCORES = {"qualification": 16, "order": 5}
+TIME_LIMIT_SECONDS = {"qualification": 7 * 60, "order": 2 * 60}
 
 
 def readiness(prompt: str, options: list[str], safe_options: list[int]) -> dict:
@@ -33,11 +34,10 @@ FEELING = readiness(
 )
 QUALIFICATION_READINESS = [
     FEELING,
-    readiness(
-        "Может ли недавно употреблённый алкоголь сейчас влиять на вашу реакцию?",
-        ["Нет", "Да или не уверен(а)"],
-        [0],
-    ),
+    {
+        **readiness("Употребляли ли вы недавно алкоголь?", ["Нет", "Да или не уверен(а)"], [0]),
+        "previous_prompt": "Может ли недавно употреблённый алкоголь сейчас влиять на вашу реакцию?",
+    },
     readiness(
         "Принимали ли вы лекарства или другие вещества, которые сейчас могут вызвать сонливость?",
         ["Нет", "Да или не уверен(а)"],
@@ -123,10 +123,15 @@ class RideAssessments:
     def __init__(self, db: UserDatabase) -> None:
         self.db = db
         self.traffic = json.loads(TRAFFIC_BANK_PATH.read_text(encoding="utf-8"))
+        self._illustrations = {
+            question["prompt"]: question["illustration"]
+            for question in self.traffic
+            if "illustration" in question
+        }
         # These wording revisions keep answer positions compatible with saved attempts.
         self._revised_questions = {
             question["previous_prompt"]: question
-            for question in [*self.traffic, *ORDER_READINESS]
+            for question in [*self.traffic, *QUALIFICATION_READINESS, *ORDER_READINESS]
             if "previous_prompt" in question
         }
 
@@ -165,11 +170,15 @@ class RideAssessments:
 
             pending = conn.execute(
                 """
-                SELECT id, questions FROM ride_assessments
+                SELECT id, questions, created_at FROM ride_assessments
                 WHERE user_id = ? AND kind = ? AND completed_at IS NULL
                 """,
                 (user_id, kind),
             ).fetchone()
+            time_limit = TIME_LIMIT_SECONDS[kind]
+            if pending is not None and pending["created_at"] + time_limit <= now:
+                conn.execute("DELETE FROM ride_assessments WHERE id = ?", (pending["id"],))
+                pending = None
             if pending is None:
                 attempt_id = secrets.token_urlsafe(24)
                 questions = self._draw(kind)
@@ -180,21 +189,28 @@ class RideAssessments:
                     """,
                     (attempt_id, user_id, kind, json.dumps(questions, ensure_ascii=False), now),
                 )
+                created_at = now
             else:
                 attempt_id = pending["id"]
                 questions = json.loads(pending["questions"])
+                created_at = pending["created_at"]
 
             visible_questions = []
             for question in questions:
                 current = self._revised_questions.get(question["prompt"], question)
-                visible_questions.append({
+                visible = {
                     "category": question["category"],
                     "prompt": current["prompt"],
                     "options": current["options"],
-                })
+                }
+                illustration = self._illustrations.get(current["prompt"])
+                if illustration is not None:
+                    visible["illustration"] = illustration
+                visible_questions.append(visible)
             return {
                 "id": attempt_id,
                 "min_score": PASS_SCORES[kind],
+                "remaining_seconds": created_at + time_limit - now,
                 "questions": visible_questions,
             }
 
@@ -211,6 +227,9 @@ class RideAssessments:
                 raise AuthError("Попытка не найдена.", 404)
             if row["completed_at"] is not None:
                 return _result(row)
+            now = int(time.time())
+            if row["created_at"] + TIME_LIMIT_SECONDS[row["kind"]] <= now:
+                raise AuthError("Время теста истекло. Начните новую попытку.", 410)
 
             questions = json.loads(row["questions"])
             if (
@@ -242,12 +261,23 @@ class RideAssessments:
                     readiness_ok = ?, score = ?, total = ?
                 WHERE id = ? RETURNING *
                 """,
-                (int(time.time()), passed, readiness_ok, score, len(knowledge), attempt_id),
+                (now, passed, readiness_ok, score, len(knowledge), attempt_id),
             ).fetchone()
             return _result(updated)
 
     def _draw(self, kind: str) -> list[dict]:
         qualification = kind == "qualification"
+        selected = random.sample(self.traffic, 20 if qualification else 3)
+        # Keep both task formats in each attempt, even in the three-question draw.
+        if all("illustration" not in question for question in selected):
+            selected[0] = random.choice([
+                question for question in self.traffic if "illustration" in question
+            ])
+        elif all("illustration" in question for question in selected):
+            selected[0] = random.choice([
+                question for question in self.traffic if "illustration" not in question
+            ])
+        random.shuffle(selected)
         traffic_questions = [
             {
                 "category": "traffic",
@@ -255,7 +285,7 @@ class RideAssessments:
                 "options": question["options"],
                 "correct_option": question["correct_option"],
             }
-            for question in random.sample(self.traffic, 20 if qualification else 3)
+            for question in selected
         ]
         if qualification:
             return [*QUALIFICATION_READINESS, *traffic_questions]

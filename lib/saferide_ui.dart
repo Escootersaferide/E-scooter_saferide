@@ -1,5 +1,6 @@
 import 'package:material_ui/material_ui.dart';
 
+const saferideName = 'saferide';
 const saferideDarkCardColor = Color(0xFF20332F);
 
 ThemeData saferideTheme(Brightness brightness) {
@@ -81,7 +82,13 @@ class SaferideScaffold extends StatelessWidget {
                   children: [
                     Icon(Icons.bolt_rounded, color: theme.colorScheme.primary),
                     const SizedBox(width: 4),
-                    const Text('saferide'),
+                    const Flexible(
+                      child: Text(
+                        saferideName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
               ),

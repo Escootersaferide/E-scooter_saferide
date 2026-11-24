@@ -30,4 +30,6 @@ flutter:
     - assets/svg/feeling.svg
     - assets/svg/lamp.svg
     - assets/questions/traffic.json
+    - assets/questions/SOURCES.md
+    - assets/questions/signs/
     

@@ -90,7 +90,7 @@ class _SaferideAppState extends State<SaferideApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'saferide',
+      title: saferideName,
       debugShowCheckedModeBanner: false,
       theme: saferideTheme(Brightness.light),
       darkTheme: saferideTheme(Brightness.dark),
@@ -172,7 +172,7 @@ class WelcomeScreen extends StatelessWidget {
             _WelcomeIllustration(dark: dark),
             const SizedBox(height: 20),
             Text(
-              'Добро пожаловать в saferide!',
+              'Добро пожаловать в $saferideName!',
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -232,12 +232,34 @@ class _WelcomeIllustration extends StatelessWidget {
               ],
               stops: [0, 0.08, 0.92, 1],
             ).createShader(bounds),
-            child: SvgPicture.asset(
-              'assets/svg/main.svg',
-              colorMapper: dark
-                  ? const _WelcomeIllustrationColors(dark: true)
-                  : const _WelcomeIllustrationColors(dark: false),
-              excludeFromSemantics: true,
+            child: ExcludeSemantics(
+              child: LayoutBuilder(
+                builder: (context, constraints) => Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    SvgPicture.asset(
+                      'assets/svg/main.svg',
+                      colorMapper: dark
+                          ? const _WelcomeIllustrationColors(dark: true)
+                          : const _WelcomeIllustrationColors(dark: false),
+                    ),
+                    Positioned(
+                      left: constraints.maxWidth * 0.15,
+                      top: constraints.maxHeight * 0.027,
+                      child: Text(
+                        saferideName,
+                        textScaler: TextScaler.noScaling,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: constraints.maxWidth * 0.073,
+                          fontWeight: FontWeight.w700,
+                          height: 1,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -264,13 +286,6 @@ class _WelcomeIllustrationColors extends ColorMapper {
     if (!dark) return color;
 
     return switch (id) {
-      // The vector wordmark includes two background-colored counters.
-      'path154' ||
-      'path156' ||
-      'path158' ||
-      'path159' ||
-      'path160' => const Color(0xFFDCEFE9),
-      'path155' || 'path157' => saferideDarkCardColor,
       'path32' || 'path151' => color,
       'path42' || 'path62' => const Color(0xFF2D7563),
       'path43' || 'path63' || 'path65' => const Color(0xFF286050),
