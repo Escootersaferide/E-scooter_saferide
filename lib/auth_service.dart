@@ -177,7 +177,7 @@ class AuthService {
   Future<AssessmentResult> submitAssessment(
     String token,
     String id,
-    List<int> answers,
+    List<int?> answers,
   ) async => AssessmentResult.fromJson(
     await _post(
       '/api/rides/submit',

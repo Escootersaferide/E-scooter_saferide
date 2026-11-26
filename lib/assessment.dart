@@ -1,14 +1,7 @@
 import 'feeling.dart';
 import 'traffic_questions.dart';
 
-enum AssessmentKind {
-  qualification(Duration(minutes: 7)),
-  order(Duration(minutes: 2));
-
-  const AssessmentKind(this.timeLimit);
-
-  final Duration timeLimit;
-}
+enum AssessmentKind { qualification, order }
 
 class AssessmentQuestion {
   AssessmentQuestion.fromJson(Map<String, dynamic> json)
@@ -34,16 +27,35 @@ class AssessmentQuestion {
     'traffic' => 'Правила дорожного движения',
     _ => 'Безопасность поездки',
   };
+
+  int? legacyIncorrectOption(Map<String, TrafficQuestion> bank) {
+    if (options.length < 2) return null;
+    // Previous servers score the first readiness option as the ready response.
+    if (category == 'readiness') return 1;
+
+    final traffic = bank[prompt];
+    final correct = traffic == null
+        ? switch (prompt) {
+            'Что стоит проверить перед началом поездки?' =>
+              'Тормоза, шины и заряд',
+            'Что делать, если вы заметили неисправность тормозов во время поездки?' =>
+              'Безопасно остановиться и сообщить о неисправности',
+            'Как нужно держать руль электросамоката во время движения?' =>
+              'Нужно держаться за руль как минимум одной рукой',
+            _ => null,
+          }
+        : traffic.options[traffic.correctOption];
+    final correctIndex = correct == null ? -1 : options.indexOf(correct);
+    if (correctIndex < 0) return null;
+    return correctIndex == 0 ? 1 : 0;
+  }
 }
 
 class AssessmentAttempt {
   AssessmentAttempt.fromJson(Map<String, dynamic> json)
     : id = json['id'] as String,
       minScore = json['min_score'] as int,
-      remainingTime = switch (json['remaining_seconds']) {
-        final int seconds => Duration(seconds: seconds),
-        _ => null,
-      },
+      acceptsSkippedAnswers = json['accepts_skipped_answers'] == true,
       questions = [
         for (final question in json['questions'] as List)
           AssessmentQuestion.fromJson(question as Map<String, dynamic>),
@@ -51,7 +63,7 @@ class AssessmentAttempt {
 
   final String id;
   final int minScore;
-  final Duration? remainingTime;
+  final bool acceptsSkippedAnswers;
   final List<AssessmentQuestion> questions;
 }
 

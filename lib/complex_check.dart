@@ -2,6 +2,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'ride_check.dart';
 import 'saferide_ui.dart';
+import 'timed_questions.dart';
 import 'traffic_questions.dart';
 
 class ComprehensiveCheckPage extends StatelessWidget {
@@ -37,7 +38,7 @@ class ComprehensiveCheckPage extends StatelessWidget {
             Text(
               'Оцените самочувствие, пройдите тест по правилам для '
               'электросамокатов и посмотрите рекомендации перед поездкой. '
-              'На ответы отводится 7 минут.',
+              'На каждый вопрос отводится ${questionTimeLimit.inSeconds} секунд.',
               style: theme.textTheme.bodyLarge,
             ),
             const SizedBox(height: 12),

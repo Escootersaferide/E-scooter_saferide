@@ -2,12 +2,11 @@ import 'dart:math';
 
 import 'package:material_ui/material_ui.dart';
 
-import 'assessment.dart';
-import 'assessment_timer.dart';
 import 'feeling.dart';
 import 'question_card.dart';
 import 'ride_result.dart';
 import 'saferide_ui.dart';
+import 'timed_questions.dart';
 import 'tips.dart';
 import 'traffic_questions.dart';
 
@@ -21,85 +20,81 @@ class RideCheckPage extends StatefulWidget {
 }
 
 class _RideCheckPageState extends State<RideCheckPage> {
-  late final AssessmentTimer _timer;
   final _random = Random();
   late var _trafficQuestions = drawTrafficQuestions(
     _random,
     widget.trafficBank,
   );
-  final _answers = List<int?>.filled(
-    readinessQuestions.length + trafficQuestionCount,
-    null,
-  );
-  int _step = 0;
+  late TimedQuestions _questions;
+  bool _showResult = false;
 
   @override
   void initState() {
     super.initState();
-    _timer = AssessmentTimer(AssessmentKind.qualification.timeLimit)
-      ..addListener(_redraw);
+    _questions = _newQuestions();
   }
 
-  void _redraw() => setState(() {});
+  TimedQuestions _newQuestions() =>
+      TimedQuestions(readinessQuestions.length + _trafficQuestions.length)
+        ..addListener(_updateClock);
+
+  void _updateClock() {
+    final index = _questions.index;
+    if (_questions.advanceIfTimedOut()) {
+      _afterAdvance(index);
+    } else {
+      setState(() {});
+    }
+  }
+
+  void _afterAdvance(int index) {
+    if (_questions.answers[index] == null || _questions.index > index + 1) {
+      showQuestionTimeout(context);
+    }
+    setState(() {});
+  }
 
   @override
   void dispose() {
-    _timer.dispose();
+    _questions.dispose();
     super.dispose();
-  }
-
-  void _advanceQuestion(int step) {
-    if (_step != step || _answers[step] == null) return;
-    if (_timer.expired) {
-      _redraw();
-      return;
-    }
-    setState(() {
-      _step++;
-      if (_step == _answers.length) _timer.pause();
-    });
   }
 
   void _restart() {
     setState(() {
+      _questions.dispose();
       _trafficQuestions = drawTrafficQuestions(_random, widget.trafficBank);
-      _answers.fillRange(0, _answers.length, null);
-      _step = 0;
-      _timer.restart(AssessmentKind.qualification.timeLimit);
+      _questions = _newQuestions();
+      _showResult = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final step = _step;
+    final step = _questions.index;
     final readinessCount = readinessQuestions.length;
-    final expired = _timer.expired && step < _answers.length;
 
     final Widget content;
-    if (expired) {
-      content = AssessmentEndedCard(
-        buttonLabel: 'Пройти заново',
-        onPressed: _restart,
-      );
-    } else if (step >= _answers.length) {
+    if (_questions.finished) {
+      final answers = _questions.answers;
       final evaluation = RideEvaluation(
-        readinessAnswers: _answers.sublist(0, readinessCount).cast<int>(),
+        readinessAnswers: answers.sublist(0, readinessCount),
         attemptQuestions: _trafficQuestions,
-        trafficAnswers: _answers.sublist(readinessCount).cast<int>(),
+        trafficAnswers: answers.sublist(readinessCount),
       );
-      content = step == _answers.length
-          ? _CheckStage(
-              number: 3,
-              child: RideRecommendations(
-                evaluation: evaluation,
-                onContinue: () => setState(() => _step = step + 1),
-              ),
-            )
-          : RideCheckResult(
+      content = _showResult
+          ? RideCheckResult(
               evaluation: evaluation,
               onRestart: _restart,
               onHome: () =>
                   Navigator.popUntil(context, (route) => route.isFirst),
+            )
+          : _CheckStage(
+              number: 3,
+              child: RideRecommendations(
+                evaluation: evaluation,
+                onContinue: () => setState(() => _showResult = true),
+              ),
             );
     } else {
       final isReadiness = step < readinessCount;
@@ -109,10 +104,9 @@ class _RideCheckPageState extends State<RideCheckPage> {
       final options =
           readiness?.options.map((option) => option.label).toList() ??
           traffic!.options;
-      final selected = _answers[step];
       final nextLabel = switch (step + 1) {
         final next when next == readinessCount => 'К тесту ПДД',
-        final next when next == _answers.length => 'К рекомендациям',
+        final next when next == _questions.count => 'К рекомендациям',
         _ => 'Продолжить',
       };
 
@@ -125,29 +119,41 @@ class _RideCheckPageState extends State<RideCheckPage> {
           prompt: readiness?.prompt ?? traffic!.prompt,
           illustration: traffic?.illustration,
           options: options,
-          selected: selected,
-          onSelect: (option) => setState(() => _answers[step] = option),
+          selected: _questions.selected,
+          secondsLeft: _questions.secondsLeft,
+          skipped: _questions.skipped,
+          onSelect: (option) {
+            if (_questions.index == step) {
+              setState(() => _questions.select(option));
+            }
+          },
           nextLabel: nextLabel,
-          onNext: selected == null ? null : () => _advanceQuestion(step),
+          onNext: _questions.canAdvance
+              ? () {
+                  if (_questions.index == step && _questions.advance()) {
+                    _afterAdvance(step);
+                  }
+                }
+              : null,
         ),
       );
     }
 
     return PopScope<void>(
-      canPop: step == 0 || expired,
+      canPop: step == 0,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && _step > 0 && !expired) {
+        if (!didPop && _questions.index > 0) {
           setState(() {
-            if (_step == _answers.length) _timer.resume();
-            _step--;
+            if (_showResult) {
+              _showResult = false;
+            } else {
+              _questions.previous();
+            }
           });
         }
       },
       child: SaferideScaffold(
-        scrollKey: ValueKey((step, expired)),
-        actions: !expired && step < _answers.length
-            ? [AssessmentTimerBadge(secondsLeft: _timer.secondsLeft)]
-            : const [],
+        scrollKey: ValueKey((step, _showResult)),
         child: content,
       ),
     );

@@ -5,7 +5,9 @@ import 'package:material_ui/material_ui.dart';
 import 'assessment.dart';
 import 'assessment_page.dart';
 import 'auth_service.dart';
+import 'qualification_intro.dart';
 import 'saferide_ui.dart';
+import 'timed_questions.dart';
 
 class RideDashboard extends StatefulWidget {
   const RideDashboard({
@@ -133,6 +135,8 @@ class _RideDashboardState extends State<RideDashboard> {
     final qualified = overview?.qualified ?? false;
     final remaining = _remainingSeconds;
     final canStart = !_loading && !_starting && _error == null;
+    final showIntro =
+        !qualified && _error == null && (!_loading || overview != null);
     final cooldown =
         '${remaining ~/ 60}:${(remaining % 60).toString().padLeft(2, '0')}';
 
@@ -146,84 +150,81 @@ class _RideDashboardState extends State<RideDashboard> {
           ),
         widget.themeAction,
       ],
-      child: SaferideCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              qualified ? 'Меню поездок' : 'Большой тест',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
+      child: showIntro
+          ? QualificationIntro(
+              starting: _starting,
+              onStart: canStart
+                  ? () => _start(AssessmentKind.qualification)
+                  : null,
+            )
+          : SaferideCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    qualified ? 'Меню поездок' : 'Большой тест',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (_loading && overview == null)
+                    const LinearProgressIndicator()
+                  else if (_error case final String error) ...[
+                    Text(
+                      error,
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton(
+                      onPressed: _loading ? null : _load,
+                      child: const Text('Обновить'),
+                    ),
+                  ] else ...[
+                    Text(
+                      'Перед каждой поездкой пройдите короткий тест. '
+                      'На каждый вопрос — ${questionTimeLimit.inSeconds} секунд.',
+                    ),
+                    if (remaining > 0) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Следующая попытка через $cooldown',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    FilledButton.icon(
+                      onPressed: canStart && remaining == 0
+                          ? () => _start(AssessmentKind.order)
+                          : null,
+                      icon: const Icon(Icons.electric_scooter_outlined),
+                      label: Text(
+                        _starting ? 'Открываем тест…' : 'Заказать самокат',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push<void>(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              _RideHistoryPage(history: overview!.history),
+                        ),
+                      ),
+                      icon: const Icon(Icons.history),
+                      label: const Text('История заказов'),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _openProfile,
+                      icon: const Icon(Icons.person_outline_rounded),
+                      label: const Text('Профиль'),
+                    ),
+                  ],
+                ],
               ),
             ),
-            const SizedBox(height: 10),
-            if (_loading && overview == null)
-              const LinearProgressIndicator()
-            else if (_error case final String error) ...[
-              Text(error, style: TextStyle(color: theme.colorScheme.error)),
-              const SizedBox(height: 16),
-              OutlinedButton(
-                onPressed: _loading ? null : _load,
-                child: const Text('Обновить'),
-              ),
-            ] else if (!qualified) ...[
-              Text(
-                'Чтобы открыть меню поездок, ответьте на 4 вопроса о самочувствии '
-                'и наберите минимум 16 из 20 по ПДД. '
-                'На тест отводится ${AssessmentKind.qualification.timeLimit.inMinutes} минут.',
-              ),
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: canStart
-                    ? () => _start(AssessmentKind.qualification)
-                    : null,
-                child: Text(
-                  _starting ? 'Открываем тест…' : 'Пройти большой тест',
-                ),
-              ),
-            ] else ...[
-              Text(
-                'Перед каждой поездкой пройдите короткий тест. '
-                'На него отводится ${AssessmentKind.order.timeLimit.inMinutes} минуты.',
-              ),
-              if (remaining > 0) ...[
-                const SizedBox(height: 12),
-                Text(
-                  'Следующая попытка через $cooldown',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    color: theme.colorScheme.error,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: canStart && remaining == 0
-                    ? () => _start(AssessmentKind.order)
-                    : null,
-                icon: const Icon(Icons.electric_scooter_outlined),
-                label: Text(_starting ? 'Открываем тест…' : 'Заказать самокат'),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).push<void>(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        _RideHistoryPage(history: overview!.history),
-                  ),
-                ),
-                icon: const Icon(Icons.history),
-                label: const Text('История заказов'),
-              ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _openProfile,
-                icon: const Icon(Icons.person_outline_rounded),
-                label: const Text('Профиль'),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }

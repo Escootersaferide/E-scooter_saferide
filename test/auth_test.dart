@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -9,6 +10,7 @@ import 'package:saferide/assessment_page.dart';
 import 'package:saferide/auth_service.dart';
 import 'package:saferide/main.dart';
 import 'package:saferide/session_storage.dart';
+import 'package:saferide/traffic_questions.dart';
 
 http.Response _jsonResponse(Map<String, Object?> body, {int status = 200}) {
   return http.Response.bytes(
@@ -300,6 +302,7 @@ void main() {
       }
 
       expect(find.text('Заказать самокат'), findsNothing);
+      expect(find.text('30 секунд на вопрос'), findsOneWidget);
       await tap(find.text('Пройти большой тест'));
       await tap(find.text('Пешеход'));
       await tap(find.text('Завершить тест'));
@@ -322,60 +325,152 @@ void main() {
     },
   );
 
-  testWidgets('An assessment counts down from its remaining server time', (
-    tester,
-  ) async {
-    final service = AuthService(
-      client: MockClient(
-        (_) async => throw StateError('Unexpected submission'),
-      ),
-    );
-    addTearDown(service.close);
+  for (final acceptsSkippedAnswers in [true, false]) {
+    testWidgets(
+      'Question deadlines survive back navigation (skip support: $acceptsSkippedAnswers)',
+      (tester) async {
+        final submissions = <List<dynamic>>[];
+        const traffic = {
+          'prompt':
+              'Как пересечь дорогу по пешеходному переходу с электросамокатом?',
+          'options': [
+            'Проехать медленно',
+            'Спешиться и перейти пешком',
+            'Проехать по сигналу',
+          ],
+          'correct_option': 1,
+          'explanation': 'Переход пройдите пешком.',
+        };
+        if (!acceptsSkippedAnswers) {
+          final messenger = tester.binding.defaultBinaryMessenger;
+          rootBundle.evict(trafficQuestionAsset);
+          messenger.setMockMessageHandler('flutter/assets', (message) async {
+            final path = utf8.decode(message!.buffer.asUint8List());
+            return path == trafficQuestionAsset
+                ? ByteData.sublistView(utf8.encode(jsonEncode([traffic])))
+                : null;
+          });
+          addTearDown(() {
+            rootBundle.evict(trafficQuestionAsset);
+            messenger.setMockMessageHandler('flutter/assets', null);
+          });
+        }
+        final service = AuthService(
+          client: MockClient((request) async {
+            expect(request.url.path, '/api/rides/submit');
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            submissions.add(body['answers'] as List);
+            return _jsonResponse({
+              'completed_at': '2026-11-26T12:00:00Z',
+              'passed': false,
+              'readiness_ok': true,
+              'score': 0,
+              'total': 2,
+            });
+          }),
+        );
+        addTearDown(service.close);
+        var now = DateTime.utc(2026, 11, 26);
 
-    for (final (kind, remaining, display) in [
-      (AssessmentKind.qualification, 420, '07:00'),
-      (AssessmentKind.order, 120, '02:00'),
-      (AssessmentKind.order, 42, '00:42'),
-      (AssessmentKind.qualification, null, '07:00'),
-    ]) {
-      var now = DateTime.utc(2026, 11, 24);
-      await tester.pumpWidget(
-        MaterialApp(
-          home: AssessmentPage(
-            key: ValueKey(remaining),
-            service: service,
-            token: 'rider-token',
-            kind: kind,
-            attempt: AssessmentAttempt.fromJson({
-              'id': 'pending-test',
-              'min_score': 1,
-              'remaining_seconds': remaining,
-              'questions': [
-                {
-                  'category': 'readiness',
-                  'prompt': remaining == null
-                      ? 'Может ли недавно употреблённый алкоголь сейчас влиять на вашу реакцию?'
-                      : 'Употребляли ли вы недавно алкоголь?',
-                  'options': ['Нет', 'Да или не уверен(а)'],
-                },
-              ],
-            }),
-            now: () => now,
+        Future<void> press(String label) async {
+          final target = find.text(label);
+          await tester.ensureVisible(target);
+          await tester.tap(target);
+          await tester.pumpAndSettle();
+        }
+
+        Future<void> elapse(int seconds) async {
+          now = now.add(Duration(seconds: seconds));
+          await tester.pump(const Duration(milliseconds: 250));
+          await tester.pumpAndSettle();
+        }
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AssessmentPage(
+              service: service,
+              token: 'rider-token',
+              kind: acceptsSkippedAnswers
+                  ? AssessmentKind.qualification
+                  : AssessmentKind.order,
+              attempt: AssessmentAttempt.fromJson({
+                'id': 'pending-test',
+                'min_score': 2,
+                if (acceptsSkippedAnswers) 'accepts_skipped_answers': true,
+                'questions': [
+                  {
+                    'category': 'readiness',
+                    'prompt': 'Может ли недавно употреблённый алкоголь сейчас влиять на вашу реакцию?',
+                    'options': ['Нет', 'Да или не уверен(а)'],
+                  },
+                  {
+                    'category': 'traffic',
+                    'prompt': traffic['prompt'],
+                    'options': traffic['options'],
+                  },
+                  {
+                    'category': 'general',
+                    'prompt': 'Что делать, если вы заметили неисправность тормозов во время поездки?',
+                    'options': [
+                      'Продолжить поездку на низкой скорости',
+                      'Доехать до места назначения и сообщить потом',
+                      'Безопасно остановиться и сообщить о неисправности',
+                    ],
+                  },
+                ],
+              }),
+              now: () => now,
+            ),
           ),
-        ),
-      );
-      expect(find.text(display), findsOneWidget);
-      expect(find.text('Употребляли ли вы недавно алкоголь?'), findsOneWidget);
-      await tester.tap(find.text('Нет'));
-      await tester.pump();
-      expect(find.text('Завершить тест'), findsOneWidget);
+        );
+        expect(find.text('На вопрос · 30 с'), findsOneWidget);
+        expect(
+          find.text('Употребляли ли вы недавно алкоголь?'),
+          findsOneWidget,
+        );
+        await elapse(20);
+        await press('Нет');
+        await press('Продолжить');
+        expect(find.text('Вопрос 2 из 3'), findsOneWidget);
+        expect(find.text('На вопрос · 30 с'), findsOneWidget);
 
-      now = now.add(Duration(seconds: remaining ?? 420));
-      await tester.pump(const Duration(milliseconds: 250));
-      expect(find.text('Время вышло'), findsOneWidget);
-      expect(find.text('Завершить тест'), findsNothing);
-    }
-  });
+        await elapse(4);
+        await press('Предыдущий вопрос');
+        expect(find.text('На вопрос · 6 с'), findsOneWidget);
+        await elapse(7);
+        expect(find.text('Ответ сохранён'), findsOneWidget);
+        expect(
+          tester
+              .widget<RadioListTile<int>>(find.byType(RadioListTile<int>).last)
+              .enabled,
+          isFalse,
+        );
+        await press('Продолжить');
+        expect(find.text('Вопрос 2 из 3'), findsOneWidget);
+        expect(find.text('На вопрос · 19 с'), findsOneWidget);
+
+        // An unconfirmed selection expires while the first question is open.
+        await press('Спешиться и перейти пешком');
+        await press('Предыдущий вопрос');
+        await elapse(19);
+        await press('Продолжить');
+        expect(find.text('Вопрос 3 из 3'), findsOneWidget);
+        expect(find.text('На вопрос · 30 с'), findsOneWidget);
+        expect(submissions, isEmpty);
+
+        // The final timeout submits the attempt without an extra button press.
+        await elapse(30);
+        expect(submissions, [
+          [
+            0,
+            if (acceptsSkippedAnswers) null else 0,
+            if (acceptsSkippedAnswers) null else 0,
+          ],
+        ]);
+        expect(find.text('Пропущено по времени — 2'), findsOneWidget);
+      },
+    );
+  }
 
   testWidgets('Tapping the top-left Saferide logo returns to the home screen', (
     tester,

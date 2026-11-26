@@ -20,7 +20,6 @@ else:
 TRAFFIC_BANK_PATH = Path(__file__).resolve().parents[1] / "assets/questions/traffic.json"
 COOLDOWN_SECONDS = 5 * 60
 PASS_SCORES = {"qualification": 16, "order": 5}
-TIME_LIMIT_SECONDS = {"qualification": 7 * 60, "order": 2 * 60}
 
 
 def readiness(prompt: str, options: list[str], safe_options: list[int]) -> dict:
@@ -170,15 +169,11 @@ class RideAssessments:
 
             pending = conn.execute(
                 """
-                SELECT id, questions, created_at FROM ride_assessments
+                SELECT id, questions FROM ride_assessments
                 WHERE user_id = ? AND kind = ? AND completed_at IS NULL
                 """,
                 (user_id, kind),
             ).fetchone()
-            time_limit = TIME_LIMIT_SECONDS[kind]
-            if pending is not None and pending["created_at"] + time_limit <= now:
-                conn.execute("DELETE FROM ride_assessments WHERE id = ?", (pending["id"],))
-                pending = None
             if pending is None:
                 attempt_id = secrets.token_urlsafe(24)
                 questions = self._draw(kind)
@@ -189,11 +184,9 @@ class RideAssessments:
                     """,
                     (attempt_id, user_id, kind, json.dumps(questions, ensure_ascii=False), now),
                 )
-                created_at = now
             else:
                 attempt_id = pending["id"]
                 questions = json.loads(pending["questions"])
-                created_at = pending["created_at"]
 
             visible_questions = []
             for question in questions:
@@ -210,7 +203,7 @@ class RideAssessments:
             return {
                 "id": attempt_id,
                 "min_score": PASS_SCORES[kind],
-                "remaining_seconds": created_at + time_limit - now,
+                "accepts_skipped_answers": True,
                 "questions": visible_questions,
             }
 
@@ -228,19 +221,18 @@ class RideAssessments:
             if row["completed_at"] is not None:
                 return _result(row)
             now = int(time.time())
-            if row["created_at"] + TIME_LIMIT_SECONDS[row["kind"]] <= now:
-                raise AuthError("Время теста истекло. Начните новую попытку.", 410)
-
             questions = json.loads(row["questions"])
             if (
                 not isinstance(answers, list)
                 or len(answers) != len(questions)
                 or any(
-                    type(answer) is not int or not 0 <= answer < len(question["options"])
+                    answer is not None and (
+                        type(answer) is not int or not 0 <= answer < len(question["options"])
+                    )
                     for question, answer in zip(questions, answers)
                 )
             ):
-                raise ValidationError("Ответьте на все вопросы теста.")
+                raise ValidationError("Проверьте количество и формат ответов.")
 
             readiness_ok = all(
                 answer in question["safe"]

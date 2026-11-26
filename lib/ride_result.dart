@@ -5,14 +5,17 @@ import 'traffic_questions.dart';
 
 class RideEvaluation {
   RideEvaluation({
-    required List<int> readinessAnswers,
+    required List<int?> readinessAnswers,
     required List<TrafficQuestion> attemptQuestions,
-    required List<int> trafficAnswers,
+    required List<int?> trafficAnswers,
   }) : readinessAdvice = [
+         if (readinessAnswers.contains(null))
+           'Ответьте на пропущенные вопросы о самочувствии при новой проверке.',
          for (final (index, answer) in readinessAnswers.indexed)
-           if (readinessQuestions[index].options[answer].advice
-               case final String recommendation)
-             recommendation,
+           if (answer != null)
+             if (readinessQuestions[index].options[answer].advice
+                 case final String recommendation)
+               recommendation,
        ],
        mistakes = [
          for (final (index, answer) in trafficAnswers.indexed)
@@ -22,7 +25,7 @@ class RideEvaluation {
        questionCount = attemptQuestions.length;
 
   final List<String> readinessAdvice;
-  final List<({TrafficQuestion question, int answer})> mistakes;
+  final List<({TrafficQuestion question, int? answer})> mistakes;
   final int questionCount;
 
   int get score => questionCount - mistakes.length;
@@ -194,9 +197,10 @@ class RideCheckResult extends StatelessWidget {
                     style: theme.textTheme.titleSmall,
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    'Ваш ответ — ${mistake.question.options[mistake.answer]}',
-                  ),
+                  if (mistake.answer case final int answer)
+                    Text('Ваш ответ — ${mistake.question.options[answer]}')
+                  else
+                    const Text('Вопрос пропущен по времени'),
                   const SizedBox(height: 4),
                   Text(
                     'Правильный ответ — '

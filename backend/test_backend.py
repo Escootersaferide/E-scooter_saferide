@@ -238,23 +238,16 @@ class AuthServerTestCase(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(qualification["questions"]), 24)
         self.assertEqual(qualification["min_score"], 16)
-        self.assertEqual(qualification["remaining_seconds"], 420)
+        self.assertTrue(qualification["accepts_skipped_answers"])
+        self.assertNotIn("remaining_seconds", qualification)
         self.assertEqual(qualification["questions"][1]["prompt"], "Употребляли ли вы недавно алкоголь?")
         check_question_formats(qualification)
-        age_attempt(qualification, 60)
+        age_attempt(qualification, 60 * 60)
         _, resumed_qualification, _ = self._request("POST", start, {"kind": "qualification"}, token)
         self.assertEqual(resumed_qualification["id"], qualification["id"])
         self.assertEqual(resumed_qualification["questions"], qualification["questions"])
-        self.assertIn(resumed_qualification["remaining_seconds"], range(1, 361))
-        age_attempt(qualification, 360)
-        self.assertEqual(self._request(
-            "POST", submit, {"id": qualification["id"], "answers": answers_for(qualification)}, token,
-        )[0], 410)
-        _, fresh, _ = self._request("POST", start, {"kind": "qualification"}, token)
-        self.assertNotEqual(fresh["id"], qualification["id"])
-        self.assertEqual(fresh["remaining_seconds"], 420)
-        qualification = fresh
         answers = answers_for(qualification)
+        answers[-1] = None
         self.assertEqual(
             self._request("POST", submit, {"id": qualification["id"], "answers": answers}, other_token)[0],
             404,
@@ -268,12 +261,13 @@ class AuthServerTestCase(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertTrue(result["passed"])
-        self.assertEqual(result["score"], 20)
+        self.assertEqual(result["score"], 19)
         self.assertEqual(self._request("POST", start, {"kind": "order"}, other_token)[0], 403)
 
         _, order, _ = self._request("POST", start, {"kind": "order"}, token)
         self.assertEqual(len(order["questions"]), 7)
-        self.assertEqual(order["remaining_seconds"], 120)
+        self.assertTrue(order["accepts_skipped_answers"])
+        self.assertNotIn("remaining_seconds", order)
         check_question_formats(order)
         substance_prompt = (
             "Употребляли ли вы недавно алкоголь или принимали лекарства либо другие "
@@ -317,7 +311,7 @@ class AuthServerTestCase(unittest.TestCase):
         self.assertEqual(resumed["questions"][2]["prompt"], handlebar["prompt"])
         self.assertEqual(resumed["questions"][2]["options"][2], "Держать руль двумя руками")
         answers = answers_for(order)
-        answers[0] = 1  # A flagged readiness answer overrides perfect knowledge.
+        answers[0] = None  # An unanswered readiness question overrides perfect knowledge.
         _, failed, _ = self._request("POST", submit, {"id": order["id"], "answers": answers}, token)
         self.assertFalse(failed["passed"])
         self.assertFalse(failed["readiness_ok"])
@@ -339,14 +333,9 @@ class AuthServerTestCase(unittest.TestCase):
             self.assertIsNone(conn.execute(
                 "SELECT questions FROM ride_assessments WHERE id = ?", (order["id"],)
             ).fetchone()[0])
-        _, timed_out_order, _ = self._request("POST", start, {"kind": "order"}, token)
-        age_attempt(timed_out_order, 120)
-        self.assertEqual(self._request(
-            "POST", submit, {"id": timed_out_order["id"], "answers": answers_for(timed_out_order)}, token,
-        )[0], 410)
         _, next_order, _ = self._request("POST", start, {"kind": "order"}, token)
-        self.assertNotEqual(timed_out_order["id"], next_order["id"])
-        self.assertEqual(next_order["remaining_seconds"], 120)
+        self.assertNotEqual(order["id"], next_order["id"])
+        age_attempt(next_order, 60 * 60)
         _, passed, _ = self._request(
             "POST", submit, {"id": next_order["id"], "answers": answers_for(next_order)}, token
         )

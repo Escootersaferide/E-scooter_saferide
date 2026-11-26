@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:saferide/complex_check.dart';
+import 'package:saferide/ride_result.dart';
 import 'package:saferide/saferide_ui.dart';
 import 'package:saferide/traffic_questions.dart';
 
@@ -62,6 +63,17 @@ Future<void> showResult(WidgetTester tester) async {
 }
 
 void main() {
+  test('Guest results count timed-out questions as unanswered', () {
+    final evaluation = RideEvaluation(
+      readinessAnswers: [null, 0, 0, 0],
+      attemptQuestions: [trafficQuestions.first],
+      trafficAnswers: [null],
+    );
+    expect(evaluation.readinessAdvice, hasLength(1));
+    expect(evaluation.score, 0);
+    expect(evaluation.mistakes.single.answer, isNull);
+  });
+
   test('The question bank has 150 distinct questions with valid options', () {
     expect(trafficQuestions, hasLength(150));
     expect(

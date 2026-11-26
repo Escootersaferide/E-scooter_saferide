@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:material_ui/material_ui.dart';
 
 import 'assessment.dart';
-import 'assessment_timer.dart';
 import 'auth_service.dart';
 import 'question_card.dart';
 import 'saferide_ui.dart';
+import 'timed_questions.dart';
 import 'traffic_questions.dart';
 
 class AssessmentPage extends StatefulWidget {
@@ -28,85 +30,96 @@ class AssessmentPage extends StatefulWidget {
 }
 
 class _AssessmentPageState extends State<AssessmentPage> {
-  late final AssessmentTimer _timer;
-  late final _answers = List<int?>.filled(
-    widget.attempt.questions.length,
-    null,
-  );
-  // Older servers omit remaining time and illustrations from the attempt.
-  late final _bundledIllustrations = widget.attempt.remainingTime == null
-      ? loadTrafficQuestions().then(
-          (bank) => {
-            for (final question in bank)
-              question.prompt: ?question.illustration,
-          },
-        )
-      : null;
-  int _index = 0;
+  late final TimedQuestions _questions;
+  late final _bundledTraffic = _loadBundledTraffic();
   bool _submitting = false;
-  String? _error;
-  String? _endedTitle;
+  AuthException? _submissionError;
   AssessmentResult? _result;
 
   @override
   void initState() {
     super.initState();
-    _timer = AssessmentTimer(
-      widget.attempt.remainingTime ?? widget.kind.timeLimit,
+    _questions = TimedQuestions(
+      widget.attempt.questions.length,
       now: widget.now,
-    )..addListener(_updateTimer);
+    )..addListener(_updateClock);
   }
 
-  void _updateTimer() => setState(() {});
+  Future<Map<String, TrafficQuestion>> _loadBundledTraffic() async {
+    try {
+      return {
+        for (final question in await loadTrafficQuestions())
+          question.prompt: question,
+      };
+    } on Object {
+      return const {};
+    }
+  }
+
+  void _updateClock() {
+    if (ModalRoute.isCurrentOf(context) == false) return;
+    final index = _questions.index;
+    if (_questions.advanceIfTimedOut()) {
+      _afterAdvance(index);
+    } else {
+      setState(() {});
+    }
+  }
 
   @override
   void dispose() {
-    _timer.dispose();
+    _questions.dispose();
     super.dispose();
   }
 
-  Future<void> _next(int index) async {
-    if (_index != index ||
-        _answers[index] == null ||
-        _submitting ||
-        _endedTitle != null) {
-      return;
+  void _next(int index) {
+    if (_questions.index == index && _questions.advance()) {
+      _afterAdvance(index);
     }
-    if (_timer.expired) {
-      _updateTimer();
-      return;
-    }
-    if (_index + 1 < _answers.length) {
-      setState(() => _index++);
-      return;
-    }
+  }
 
+  void _afterAdvance(int index) {
+    if (_questions.answers[index] == null || _questions.index > index + 1) {
+      showQuestionTimeout(context);
+    }
+    setState(() {});
+    if (_questions.finished) unawaited(_submit());
+  }
+
+  Future<void> _submit() async {
+    if (_submitting || !_questions.finished) return;
     setState(() {
       _submitting = true;
-      _error = null;
+      _submissionError = null;
     });
     try {
+      final answers = _questions.answers;
+      if (!widget.attempt.acceptsSkippedAnswers && answers.contains(null)) {
+        // Previous APIs need an option index, so encode missing answers using
+        // a known incorrect option without changing the displayed selections.
+        final bank = await _bundledTraffic;
+        for (var i = 0; i < answers.length; i++) {
+          if (answers[i] != null) continue;
+          final fallback = widget.attempt.questions[i].legacyIncorrectOption(
+            bank,
+          );
+          if (fallback == null) {
+            throw const AuthException(
+              'Для зачёта пропущенного задания нужно обновить сервер.',
+            );
+          }
+          answers[i] = fallback;
+        }
+      }
+      if (!mounted) return;
       final result = await widget.service.submitAssessment(
         widget.token,
         widget.attempt.id,
-        _answers.cast<int>(),
+        answers,
       );
-      if (mounted) {
-        _timer.pause();
-        setState(() => _result = result);
-      }
+      if (mounted) setState(() => _result = result);
     } on AuthException catch (error) {
-      if (mounted) {
-        setState(() {
-          _error = error.message;
-          _endedTitle = switch (error.statusCode) {
-            410 => 'Время вышло',
-            404 => 'Попытка больше недоступна',
-            _ => null,
-          };
-          if (_endedTitle != null) _timer.pause();
-        });
-      }
+      if (mounted) setState(() => _submissionError = error);
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -118,6 +131,9 @@ class _AssessmentPageState extends State<AssessmentPage> {
     final isOrder = widget.kind == AssessmentKind.order;
     final result = _result;
     if (result != null) {
+      final skipped = _questions.answers
+          .where((answer) => answer == null)
+          .length;
       final title = switch ((isOrder, result.passed)) {
         (true, true) => 'Допуск к поездке получен',
         (true, false) => 'Допуск к поездке пока закрыт',
@@ -158,6 +174,10 @@ class _AssessmentPageState extends State<AssessmentPage> {
                 'Правильных ответов: ${result.score} из ${result.total}. '
                 'Для зачёта нужно ${widget.attempt.minScore}.',
               ),
+              if (skipped > 0) ...[
+                const SizedBox(height: 6),
+                Text('Пропущено по времени — $skipped'),
+              ],
               const SizedBox(height: 22),
               FilledButton(
                 onPressed: () => Navigator.of(context).pop(),
@@ -171,23 +191,35 @@ class _AssessmentPageState extends State<AssessmentPage> {
       );
     }
 
-    if (!_submitting && (_endedTitle != null || _timer.expired)) {
+    if (_questions.finished) {
+      final error = _submissionError;
+      final canRetry = error?.statusCode != 404 && error?.statusCode != 410;
       return SaferideScaffold(
-        scrollKey: const ValueKey('assessment_ended'),
-        child: AssessmentEndedCard(
-          title: _endedTitle ?? 'Время вышло',
-          buttonLabel: isOrder ? 'К меню поездок' : 'На главную',
-          onPressed: () => Navigator.of(context).pop(),
+        child: SaferideCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(error?.message ?? 'Проверяем ответы…'),
+              const SizedBox(height: 12),
+              if (_submitting)
+                const LinearProgressIndicator()
+              else
+                FilledButton(
+                  onPressed: canRetry
+                      ? _submit
+                      : () => Navigator.of(context).pop(),
+                  child: Text(canRetry ? 'Отправить ещё раз' : 'К началу'),
+                ),
+            ],
+          ),
         ),
       );
     }
 
-    final index = _index;
-    final question = widget.attempt.questions[_index];
-    final isLast = _index + 1 == _answers.length;
+    final index = _questions.index;
+    final question = widget.attempt.questions[index];
     return SaferideScaffold(
-      scrollKey: ValueKey(_index),
-      actions: [AssessmentTimerBadge(secondsLeft: _timer.secondsLeft)],
+      scrollKey: ValueKey(index),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -196,50 +228,38 @@ class _AssessmentPageState extends State<AssessmentPage> {
             style: theme.textTheme.titleLarge,
           ),
           const SizedBox(height: 10),
-          LinearProgressIndicator(value: (_index + 1) / _answers.length),
+          LinearProgressIndicator(value: (index + 1) / _questions.count),
           const SizedBox(height: 14),
           FutureBuilder(
-            future: _bundledIllustrations,
+            future: widget.attempt.acceptsSkippedAnswers
+                ? null
+                : _bundledTraffic,
             builder: (context, snapshot) => QuestionCard(
               section: question.section,
               number: index + 1,
-              count: _answers.length,
+              count: _questions.count,
               prompt: question.prompt,
               illustration:
-                  question.illustration ?? snapshot.data?[question.prompt],
+                  question.illustration ??
+                  snapshot.data?[question.prompt]?.illustration,
               options: question.options,
-              selected: _answers[index],
+              selected: _questions.selected,
+              secondsLeft: _questions.secondsLeft,
+              skipped: _questions.skipped,
               onSelect: (answer) {
-                if (_index == index && !_submitting && !_timer.expired) {
-                  setState(() => _answers[index] = answer);
+                if (_questions.index == index) {
+                  setState(() => _questions.select(answer));
                 }
               },
-              nextLabel: _submitting
-                  ? 'Проверяем ответы…'
-                  : isLast
+              nextLabel: index + 1 == _questions.count
                   ? 'Завершить тест'
                   : 'Продолжить',
-              onNext: _answers[index] == null || _submitting
-                  ? null
-                  : () => _next(index),
+              onNext: _questions.canAdvance ? () => _next(index) : null,
             ),
           ),
-          if (_error case final String error)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Text(
-                error,
-                style: TextStyle(color: theme.colorScheme.error),
-              ),
-            ),
-          if (_index > 0)
+          if (index > 0)
             TextButton(
-              onPressed: _submitting
-                  ? null
-                  : () => setState(() {
-                      _index--;
-                      _error = null;
-                    }),
+              onPressed: () => setState(_questions.previous),
               child: const Text('Предыдущий вопрос'),
             ),
         ],
