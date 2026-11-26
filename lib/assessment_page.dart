@@ -115,7 +115,10 @@ class _AssessmentPageState extends State<AssessmentPage> {
       final result = await widget.service.submitAssessment(
         widget.token,
         widget.attempt.id,
-        answers,
+        [
+          for (final (index, answer) in answers.indexed)
+            widget.attempt.questions[index].answerForServer(answer),
+        ],
       );
       if (mounted) setState(() => _result = result);
     } on AuthException catch (error) {

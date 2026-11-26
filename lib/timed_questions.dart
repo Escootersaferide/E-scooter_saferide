@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-const questionTimeLimit = Duration(seconds: 30);
+const questionTimeLimit = Duration(seconds: 20);
 
 class TimedQuestions extends ChangeNotifier {
   TimedQuestions(int count, {this.now = DateTime.now})

@@ -74,8 +74,8 @@ void main() {
     expect(evaluation.mistakes.single.answer, isNull);
   });
 
-  test('The question bank has 150 distinct questions with valid options', () {
-    expect(trafficQuestions, hasLength(150));
+  test('The question bank has 149 distinct questions with valid options', () {
+    expect(trafficQuestions, hasLength(149));
     expect(
       trafficQuestions.map((question) => question.prompt).toSet(),
       hasLength(trafficQuestions.length),
@@ -91,7 +91,7 @@ void main() {
     tester,
   ) async {
     final illustrated = trafficQuestions.where((q) => q.illustration != null);
-    expect(illustrated, hasLength(35));
+    expect(illustrated, hasLength(34));
     final illustrations = {for (final q in illustrated) q.illustration!.asset};
     for (final path in illustrations) {
       final image = await tester.runAsync(

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'assessment.dart';
+import 'traffic_questions.dart';
 
 const defaultSaferideApiUrl = String.fromEnvironment(
   'SAFERIDE_API_URL',
@@ -170,9 +171,18 @@ class AuthService {
   Future<AssessmentAttempt> startAssessment(
     String token,
     AssessmentKind kind,
-  ) async => AssessmentAttempt.fromJson(
-    await _post('/api/rides/start', token: token, body: {'kind': kind.name}),
-  );
+  ) async {
+    final attempt = AssessmentAttempt.fromJson(
+      await _post('/api/rides/start', token: token, body: {'kind': kind.name}),
+    );
+    if (!attempt.needsQuestionReplacement) return attempt;
+    try {
+      // An older API can still include a retired question in a saved attempt.
+      return attempt.replaceRemovedQuestions(await loadTrafficQuestions());
+    } on Object {
+      throw const AuthException('Не удалось обновить набор вопросов.');
+    }
+  }
 
   Future<AssessmentResult> submitAssessment(
     String token,

@@ -182,7 +182,7 @@ class AuthServerTestCase(unittest.TestCase):
         status, body, headers = self._request("GET", "/api/health")
         self.assertEqual(status, 200)
         self.assertEqual(body["status"], "ok")
-        self.assertEqual(body["traffic_question_count"], 150)
+        self.assertEqual(body["traffic_question_count"], 149)
         self.assertEqual(headers.get("Access-Control-Allow-Origin"), "*")
 
         status, _, headers = self._request("OPTIONS", "/api/auth/register")
@@ -343,6 +343,38 @@ class AuthServerTestCase(unittest.TestCase):
         history = self._request("GET", "/api/rides", token=token)[1]["history"]
         self.assertEqual([item["passed"] for item in history], [True, False])
         self.assertEqual(self._request("GET", "/api/rides", token=other_token)[1]["history"], [])
+
+    def test_start_replaces_pending_attempt_with_a_removed_question(self):
+        _, session, _ = self._request(
+            "POST", "/api/auth/register",
+            {"email": "rider@example.test", "phone": "+79999990001", "password": "TestPassword123"},
+        )
+        token = session["token"]
+        start = "/api/rides/start"
+        body = {"kind": "qualification"}
+        _, pending, _ = self._request("POST", start, body, token)
+        removed = "Какой знак отмечает пешеходный переход у проезжей части?"
+        with self.server.db.connect() as conn:
+            row = conn.execute(
+                "SELECT questions FROM ride_assessments WHERE id = ?",
+                (pending["id"],),
+            ).fetchone()
+            questions = json.loads(row[0])
+            questions[4]["prompt"] = removed
+            conn.execute(
+                "UPDATE ride_assessments SET questions = ? WHERE id = ?",
+                (json.dumps(questions, ensure_ascii=False), pending["id"]),
+            )
+
+        status, current, _ = self._request("POST", start, body, token)
+        self.assertEqual(status, 200)
+        self.assertNotEqual(current["id"], pending["id"])
+        self.assertEqual(len(current["questions"]), len(pending["questions"]))
+        self.assertNotIn(removed, [q["prompt"] for q in current["questions"]])
+        self.assertEqual(self._request("POST", start, body, token)[1], current)
+        self.assertEqual(self._request(
+            "POST", "/api/rides/submit", {"id": pending["id"], "answers": []}, token
+        )[0], 404)
 
     def test_register_me_logout_and_login_flow(self) -> None:
         status, body, _ = self._request(

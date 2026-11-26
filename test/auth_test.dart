@@ -302,7 +302,7 @@ void main() {
       }
 
       expect(find.text('Заказать самокат'), findsNothing);
-      expect(find.text('30 секунд на вопрос'), findsOneWidget);
+      expect(find.text('20 секунд на вопрос'), findsOneWidget);
       await tap(find.text('Пройти большой тест'));
       await tap(find.text('Пешеход'));
       await tap(find.text('Завершить тест'));
@@ -423,16 +423,16 @@ void main() {
             ),
           ),
         );
-        expect(find.text('На вопрос · 30 с'), findsOneWidget);
+        expect(find.text('На вопрос · 20 с'), findsOneWidget);
         expect(
           find.text('Употребляли ли вы недавно алкоголь?'),
           findsOneWidget,
         );
-        await elapse(20);
+        await elapse(10);
         await press('Нет');
         await press('Продолжить');
         expect(find.text('Вопрос 2 из 3'), findsOneWidget);
-        expect(find.text('На вопрос · 30 с'), findsOneWidget);
+        expect(find.text('На вопрос · 20 с'), findsOneWidget);
 
         await elapse(4);
         await press('Предыдущий вопрос');
@@ -447,19 +447,19 @@ void main() {
         );
         await press('Продолжить');
         expect(find.text('Вопрос 2 из 3'), findsOneWidget);
-        expect(find.text('На вопрос · 19 с'), findsOneWidget);
+        expect(find.text('На вопрос · 9 с'), findsOneWidget);
 
         // An unconfirmed selection expires while the first question is open.
         await press('Спешиться и перейти пешком');
         await press('Предыдущий вопрос');
-        await elapse(19);
+        await elapse(9);
         await press('Продолжить');
         expect(find.text('Вопрос 3 из 3'), findsOneWidget);
-        expect(find.text('На вопрос · 30 с'), findsOneWidget);
+        expect(find.text('На вопрос · 20 с'), findsOneWidget);
         expect(submissions, isEmpty);
 
         // The final timeout submits the attempt without an extra button press.
-        await elapse(30);
+        await elapse(20);
         expect(submissions, [
           [
             0,

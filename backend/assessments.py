@@ -122,6 +122,12 @@ class RideAssessments:
     def __init__(self, db: UserDatabase) -> None:
         self.db = db
         self.traffic = json.loads(TRAFFIC_BANK_PATH.read_text(encoding="utf-8"))
+        self._traffic_prompts = {
+            question[field]
+            for question in self.traffic
+            for field in ("prompt", "previous_prompt")
+            if field in question
+        }
         self._illustrations = {
             question["prompt"]: question["illustration"]
             for question in self.traffic
@@ -174,6 +180,16 @@ class RideAssessments:
                 """,
                 (user_id, kind),
             ).fetchone()
+            if pending is not None:
+                questions = json.loads(pending["questions"])
+                if any(
+                    question["category"] == "traffic"
+                    and question["prompt"] not in self._traffic_prompts
+                    for question in questions
+                ):
+                    # A new attempt ID keeps old clients' answers tied to their original set.
+                    conn.execute("DELETE FROM ride_assessments WHERE id = ?", (pending["id"],))
+                    pending = None
             if pending is None:
                 attempt_id = secrets.token_urlsafe(24)
                 questions = self._draw(kind)
@@ -186,7 +202,6 @@ class RideAssessments:
                 )
             else:
                 attempt_id = pending["id"]
-                questions = json.loads(pending["questions"])
 
             visible_questions = []
             for question in questions:

@@ -10,6 +10,7 @@ import 'package:saferide/assessment_page.dart';
 import 'package:saferide/auth_service.dart';
 import 'package:saferide/qualification_intro.dart';
 import 'package:saferide/saferide_ui.dart';
+import 'package:saferide/traffic_questions.dart';
 
 const crossingQuestion = {
   'category': 'traffic',
@@ -64,7 +65,50 @@ Future<void> press(WidgetTester tester, String label) async {
 }
 
 void main() {
-  testWidgets('A confirmation exactly at 30 seconds counts as a skip', (
+  test('A removed question is replaced and graded in its original slot', () {
+    const removed = 'Какой знак отмечает пешеходный переход у проезжей части?';
+    const existing = TrafficQuestion(
+      prompt: 'Как пересечь дорогу на пешеходном переходе?',
+      options: ['Спешиться и перейти пешком', 'Проехать по переходу'],
+      correctOption: 0,
+      explanation: 'Переход нужно пройти пешком, ведя самокат.',
+    );
+    const replacement = TrafficQuestion(
+      prompt: 'Как вести себя рядом с пешеходами?',
+      options: ['Увеличить скорость', 'Уступить дорогу'],
+      correctOption: 1,
+      explanation: 'Пешеходы имеют приоритет.',
+    );
+    final original = AssessmentAttempt.fromJson({
+      'id': 'saved-attempt',
+      'min_score': 2,
+      'questions': [
+        crossingQuestion,
+        {
+          'category': 'traffic',
+          'prompt': removed,
+          'options': ['4.4.1', '3.35', '5.19.1 или 5.19.2'],
+        },
+      ],
+    });
+
+    expect(original.needsQuestionReplacement, isTrue);
+    final current = original.replaceRemovedQuestions([existing, replacement]);
+    expect(current.needsQuestionReplacement, isFalse);
+    expect(current.id, original.id);
+    expect(current.minScore, original.minScore);
+    expect(current.questions.map((q) => q.prompt), [
+      existing.prompt,
+      replacement.prompt,
+    ]);
+    final updated = current.questions.last;
+    expect(updated.answerForServer(1), 2);
+    expect(updated.answerForServer(0), 0);
+    expect(updated.answerForServer(null), isNull);
+    expect(updated.answerForServer(updated.legacyIncorrectOption({})), 0);
+  });
+
+  testWidgets('A confirmation exactly at 20 seconds counts as a skip', (
     tester,
   ) async {
     final submissions = <Object?>[];
@@ -83,7 +127,7 @@ void main() {
     await press(tester, 'Спешиться и перейти пешком');
 
     // Tap the still-visible button before the next clock update.
-    now = now.add(const Duration(seconds: 30));
+    now = now.add(const Duration(seconds: 20));
     await press(tester, 'Завершить тест');
 
     expect(submissions, [
@@ -115,17 +159,17 @@ void main() {
     now = now.add(const Duration(seconds: 5));
     await press(tester, 'Да или не уверен(а)');
     await press(tester, 'Продолжить');
-    expect(find.text('На вопрос · 30 с'), findsOneWidget);
+    expect(find.text('На вопрос · 20 с'), findsOneWidget);
     now = now.add(const Duration(seconds: 9));
     await press(tester, 'Предыдущий вопрос');
-    expect(find.text('На вопрос · 16 с'), findsOneWidget);
+    expect(find.text('На вопрос · 6 с'), findsOneWidget);
     await press(tester, 'Нет');
     await press(tester, 'Продолжить');
-    expect(find.text('На вопрос · 21 с'), findsOneWidget);
+    expect(find.text('На вопрос · 11 с'), findsOneWidget);
     await press(tester, 'Спешиться и перейти пешком');
 
     // A confirmation just before the deadline still counts.
-    now = now.add(const Duration(seconds: 20, milliseconds: 999));
+    now = now.add(const Duration(seconds: 10, milliseconds: 999));
     await press(tester, 'Завершить тест');
 
     expect(submissions, [
@@ -199,7 +243,7 @@ void main() {
           ),
         ),
       );
-      expect(find.text('30 секунд на вопрос'), findsOneWidget);
+      expect(find.text('20 секунд на вопрос'), findsOneWidget);
       await press(tester, 'Пройти большой тест');
       expect(tester.takeException(), isNull);
     }
